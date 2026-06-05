@@ -1,0 +1,54 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
+
+# Prisma
+apps/api/src/generated/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Certificados / firma digital SIFEN (NUNCA versionar)
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.csr
+certs/
+certificados/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Claude Code — skills de terceros instaladas y config local
+# (se versiona config compartida del proyecto, p. ej. .claude/settings.json)
+.claude/skills/
+.claude/settings.local.json
+
+# Uploads / temporales
+uploads/
+tmp/

@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Sistema de diseno - ERP Electrodomesticos
+  Estilo: Data-Dense Dashboard (skill ui-ux-pro-max)
+  Paleta: Industrial slate + stock green
+  Tipografia: Fira Sans (cuerpo) / Fira Code (numeros, codigos)
+*/
+:root {
+  --color-primary: #334155;
+  --color-on-primary: #ffffff;
+  --color-secondary: #475569;
+  --color-accent: #059669;
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-muted: #f2f3f4;
+  --color-border: #e6e8ea;
+  --color-destructive: #dc2626;
+  --color-ring: #334155;
+
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-feature-settings: "tnum" 1; /* numeros tabulares para montos */
+}
+
+/* Select estilizado con chevron propio (data-URI escapado en CSS plano) */
+.field-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1rem;
+  padding-right: 2.25rem;
+}
+
+/* Numeros, codigos y montos en fuente monoespaciada */
+.font-data {
+  font-family: var(--font-fira-code), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respetar preferencia de movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
