@@ -42,6 +42,7 @@ export default function UsuariosPage() {
   const [roleIds, setRoleIds] = useState<Set<number>>(new Set());
   const [companyIds, setCompanyIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   async function load() {
     try {
@@ -64,6 +65,7 @@ export default function UsuariosPage() {
     setActivo(true);
     setRoleIds(new Set());
     setCompanyIds(new Set(companies.map((c) => c.id))); // por defecto, todas las empresas
+    setDirty(false);
     setOpen(true);
   }
   function editar(u: UserRow) {
@@ -74,9 +76,11 @@ export default function UsuariosPage() {
     setActivo(u.activo);
     setRoleIds(new Set(u.roleIds));
     setCompanyIds(new Set(u.companyIds));
+    setDirty(false);
     setOpen(true);
   }
   function toggleRole(id: number) {
+    setDirty(true);
     setRoleIds((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -85,6 +89,7 @@ export default function UsuariosPage() {
     });
   }
   function toggleCompany(id: number) {
+    setDirty(true);
     setCompanyIds((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -165,7 +170,7 @@ export default function UsuariosPage() {
                   <td className="px-4 py-3 text-center"><StatusBadge activo={u.activo} /></td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => editar(u)} aria-label="Editar"
-                      className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary">
+                      className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <Pencil className="h-4 w-4" />
                     </button>
                   </td>
@@ -180,6 +185,7 @@ export default function UsuariosPage() {
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? `Editar ${editing.nombre}` : "Nuevo usuario"}
+        confirmClose={dirty}
         footer={
           <>
             <Button variant="secondary" type="button" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -189,17 +195,17 @@ export default function UsuariosPage() {
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Usuario" htmlFor="username" required>
-            <Input id="username" value={username} disabled={!!editing} onChange={(e) => setUsername(e.target.value)} placeholder="ej jperez" />
+            <Input id="username" value={username} disabled={!!editing} onChange={(e) => { setUsername(e.target.value); setDirty(true); }} placeholder="ej jperez" />
           </Field>
           <Field label="Nombre" htmlFor="nombre" required>
-            <Input id="nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+            <Input id="nombre" value={nombre} onChange={(e) => { setNombre(e.target.value); setDirty(true); }} />
           </Field>
           <Field label={editing ? "Nueva contrasena (opcional)" : "Contrasena"} htmlFor="pass" required={!editing}>
-            <Input id="pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editing ? "Dejar vacio para no cambiar" : ""} />
+            <Input id="pass" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setDirty(true); }} placeholder={editing ? "Dejar vacio para no cambiar" : ""} />
           </Field>
           <div className="flex items-end">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-secondary">
-              <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
+              <input type="checkbox" checked={activo} onChange={(e) => { setActivo(e.target.checked); setDirty(true); }} className="h-4 w-4 cursor-pointer accent-accent" />
               Activo
             </label>
           </div>

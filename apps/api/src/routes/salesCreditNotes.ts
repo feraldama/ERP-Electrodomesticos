@@ -27,7 +27,7 @@ notasCreditoVentaRouter.get(
     const invoice = await prisma.salesInvoice.findFirst({
       where: { id: invoiceId, companyId: req.companyId },
       include: {
-        items: { include: { article: { select: { codigo: true, descripcion: true } } } },
+        items: { include: { article: { select: { codigo: true, descripcion: true, controlaSerie: true } } } },
         customer: { include: { person: { select: { razonSocial: true } } } },
       },
     });
@@ -59,6 +59,7 @@ notasCreditoVentaRouter.get(
           articleId: it.articleId,
           codigo: it.article.codigo,
           descripcion: it.article.descripcion,
+          controlaSerie: it.article.controlaSerie,
           ivaTipo: it.ivaTipo,
           precioUnitario: it.precioUnitario,
           vendido,
@@ -78,7 +79,14 @@ const ncSchema = z.object({
   motivo: z.string().optional().nullable(),
   warehouseId: z.number().int().optional(),
   items: z
-    .array(z.object({ articleId: z.number().int(), cantidad: z.number().positive(), precioUnitario: z.number().nonnegative() }))
+    .array(
+      z.object({
+        articleId: z.number().int(),
+        cantidad: z.number().positive(),
+        precioUnitario: z.number().nonnegative(),
+        series: z.array(z.string()).optional(),
+      })
+    )
     .optional(),
   montoManual: z.number().nonnegative().optional(),
 });

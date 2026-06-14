@@ -1,11 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
+import { devolverSeriesVenta } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
 
 export interface CreditNoteItemInput {
   articleId: number;
   cantidad: number;
   precioUnitario: number; // con IVA incluido
+  series?: string[]; // requerido (largo === cantidad) si el articulo controla serie
 }
 
 export interface CreateSalesCreditNoteInput {
@@ -65,7 +67,17 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
   const hasItems = items.length > 0;
 
   let subtotalExenta = 0, subtotal5 = 0, subtotal10 = 0, iva5 = 0, iva10 = 0, total = 0;
-  const computed: Array<{ articleId: number; cantidad: number; precioUnitario: number; ivaTipo: "IVA10" | "IVA5" | "EXENTA"; total: number }> = [];
+  const computed: Array<{ articleId: number; cantidad: number; precioUnitario: number; ivaTipo: "IVA10" | "IVA5" | "EXENTA"; total: number; series?: string[] }> = [];
+
+  // Articulos involucrados (para saber cuales controlan serie)
+  const artCtrl = new Map<number, boolean>();
+  if (hasItems) {
+    const arts = await prisma.article.findMany({
+      where: { id: { in: [...new Set(items.map((i) => i.articleId))] } },
+      select: { id: true, controlaSerie: true },
+    });
+    for (const a of arts) artCtrl.set(a.id, a.controlaSerie);
+  }
 
   if (hasItems) {
     if (!input.warehouseId) throw new Error("Indica el deposito para reingresar el stock devuelto");
@@ -79,13 +91,20 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
       if (it.cantidad > restante + 1e-6) {
         throw new Error(`No se puede devolver mas de lo vendido (restante ${restante})`);
       }
+      // Series/IMEI: para articulos con serie, hay que indicar cuales se devuelven (una por unidad)
+      if (artCtrl.get(it.articleId)) {
+        const series = (it.series ?? []).map((s) => s.trim()).filter(Boolean);
+        if (!Number.isInteger(it.cantidad) || series.length !== it.cantidad) {
+          throw new Error("Indica las series/IMEI devueltas (una por unidad)");
+        }
+      }
       const ivaTipo = invItem.ivaTipo;
       const bruto = r(it.cantidad * it.precioUnitario);
       const { neto, iva } = desglosarIvaIncluido(bruto, ivaTipo);
       if (ivaTipo === "IVA10") { subtotal10 += neto; iva10 += iva; }
       else if (ivaTipo === "IVA5") { subtotal5 += neto; iva5 += iva; }
       else subtotalExenta += bruto;
-      computed.push({ articleId: it.articleId, cantidad: it.cantidad, precioUnitario: it.precioUnitario, ivaTipo, total: bruto });
+      computed.push({ articleId: it.articleId, cantidad: it.cantidad, precioUnitario: it.precioUnitario, ivaTipo, total: bruto, series: it.series });
     }
     total = subtotalExenta + subtotal5 + subtotal10 + iva5 + iva10;
   } else {
@@ -142,6 +161,10 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
         observacion: `NC venta ${numero}`,
         usuarioId: input.usuarioId ?? null,
       });
+      // Series/IMEI devueltas -> DEVUELTO (apartadas, no revendibles hasta reactivar)
+      if (artCtrl.get(c.articleId) && c.series?.length) {
+        await devolverSeriesVenta(prisma, { saleInvoiceId: invoice.id, articleId: c.articleId, series: c.series });
+      }
     }
   }
 
@@ -156,6 +179,34 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
       origenId: nc.id,
     },
   });
+
+  // Reajuste de cuotas (solo venta a credito): baja el saldo de las cuotas desde la
+  // ULTIMA hacia atras, respetando lo ya pagado. Asi las cuotas proximas quedan igual y
+  // el plan se acorta por el final. Mantiene consistente "saldo de cuotas" con la cuenta corriente.
+  if (invoice.condicion === "CREDITO") {
+    const cuotas = await prisma.installment.findMany({
+      where: { invoiceId: invoice.id },
+      orderBy: { nroCuota: "desc" },
+    });
+    let restante = total;
+    for (const c of cuotas) {
+      if (restante <= 0) break;
+      const montoCuota = Number(c.montoCuota);
+      const montoPagado = Number(c.montoPagado);
+      const saldo = r(montoCuota - montoPagado);
+      if (saldo <= 0) continue; // cuota ya saldada: no se toca
+      const baja = Math.min(saldo, restante);
+      const nuevoMonto = montoCuota - baja;
+      restante -= baja;
+      await prisma.installment.update({
+        where: { id: c.id },
+        data: {
+          montoCuota: nuevoMonto,
+          estado: nuevoMonto <= montoPagado ? "PAGADA" : montoPagado > 0 ? "PARCIAL" : "PENDIENTE",
+        },
+      });
+    }
+  }
 
   // Evento contable
   await prisma.accountingEvent.create({

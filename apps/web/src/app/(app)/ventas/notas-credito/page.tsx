@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
-import type { CreditableInvoice, SalesInvoice, Warehouse } from "@/lib/types";
+import type { CreditableInvoice, CreditableItem, SalesInvoice, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal } from "@/components/QuickCreateModal";
+import { SerialPicker } from "@/components/SerialPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { Search } from "lucide-react";
@@ -24,6 +25,7 @@ type Modo = "articulos" | "monto";
 interface SelItem {
   cantidad: string;
   precio: string;
+  series?: string[]; // series devueltas (solo articulos con control de serie)
 }
 
 export default function NotaCreditoVentaPage() {
@@ -45,6 +47,7 @@ export default function NotaCreditoVentaPage() {
   const [motivo, setMotivo] = useState("");
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
+  const [serialPickerArticle, setSerialPickerArticle] = useState<number | null>(null);
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -88,11 +91,17 @@ export default function NotaCreditoVentaPage() {
     }
   }
 
-  function toggle(articleId: number, restante: number, precio: string) {
+  function toggle(it: CreditableItem) {
     setSel((s) => {
       const next = { ...s };
-      if (articleId in next) delete next[articleId];
-      else next[articleId] = { cantidad: String(restante), precio: String(Math.round(Number(precio))) };
+      if (it.articleId in next) {
+        delete next[it.articleId];
+      } else {
+        const precio = String(Math.round(Number(it.precioUnitario)));
+        next[it.articleId] = it.controlaSerie
+          ? { cantidad: "0", precio, series: [] }
+          : { cantidad: String(it.restante), precio };
+      }
       return next;
     });
   }
@@ -111,7 +120,12 @@ export default function NotaCreditoVentaPage() {
     if (!data) return notify("error", "Selecciona una factura");
     if (modo === "articulos") {
       const items = Object.entries(sel)
-        .map(([articleId, it]) => ({ articleId: Number(articleId), cantidad: Number(it.cantidad) || 0, precioUnitario: Number(it.precio) || 0 }))
+        .map(([articleId, it]) => ({
+          articleId: Number(articleId),
+          cantidad: Number(it.cantidad) || 0,
+          precioUnitario: Number(it.precio) || 0,
+          ...(it.series ? { series: it.series } : {}),
+        }))
         .filter((i) => i.cantidad > 0);
       if (items.length === 0) return notify("error", "Selecciona al menos un articulo a devolver");
       // tope por restante
@@ -242,25 +256,42 @@ export default function NotaCreditoVentaPage() {
                       const selected = it.articleId in sel;
                       const sinSaldo = it.restante <= 0;
                       return (
-                        <tr key={it.articleId} className={`border-b border-border last:border-0 ${selected ? "bg-accent/5" : ""}`}>
+                        <tr key={it.articleId} className={`border-b border-border last:border-0 align-top ${selected ? "bg-accent/5" : ""}`}>
                           <td className="px-3 py-2">
                             <input type="checkbox" disabled={sinSaldo} checked={selected}
-                              onChange={() => toggle(it.articleId, it.restante, it.precioUnitario)}
+                              onChange={() => toggle(it)}
                               className="h-4 w-4 cursor-pointer accent-accent disabled:opacity-40" />
                           </td>
                           <td className="px-3 py-2">
                             <div className="text-foreground">{it.descripcion}</div>
-                            <div className="font-mono text-xs text-slate-400">{it.codigo}</div>
+                            <div className="font-mono text-xs text-slate-500">{it.codigo}</div>
+                            {it.controlaSerie && selected && (
+                              <button
+                                type="button"
+                                onClick={() => setSerialPickerArticle(it.articleId)}
+                                className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline"
+                              >
+                                {(sel[it.articleId].series?.length ?? 0) > 0
+                                  ? `Series: ${sel[it.articleId].series!.length} elegida(s)`
+                                  : "Elegir series / IMEI a devolver"}
+                              </button>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-center text-slate-500">{IVA_LABEL[it.ivaTipo]}</td>
                           <td className="px-3 py-2 text-center text-slate-600">{it.vendido}</td>
-                          <td className="px-3 py-2 text-center text-slate-400">{it.acreditado}</td>
+                          <td className="px-3 py-2 text-center text-slate-500">{it.acreditado}</td>
                           <td className="px-3 py-2 text-center font-medium text-foreground">{it.restante}</td>
                           <td className="px-3 py-2 text-right">
-                            <input type="number" min={0} max={it.restante} disabled={!selected}
-                              value={selected ? sel[it.articleId].cantidad : ""}
-                              onChange={(e) => setItem(it.articleId, { cantidad: e.target.value })}
-                              className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted" />
+                            {it.controlaSerie ? (
+                              <span className="inline-block w-20 rounded-lg bg-muted px-2 py-1 text-right text-sm text-slate-600">
+                                {selected ? sel[it.articleId].cantidad : 0}
+                              </span>
+                            ) : (
+                              <input type="number" min={0} max={it.restante} disabled={!selected}
+                                value={selected ? sel[it.articleId].cantidad : ""}
+                                onChange={(e) => setItem(it.articleId, { cantidad: e.target.value })}
+                                className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted" />
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <div className="ml-auto w-28">
@@ -322,6 +353,17 @@ export default function NotaCreditoVentaPage() {
           setWarehouseId(String(item.id));
         }}
       />
+
+      {serialPickerArticle != null && data && (
+        <SerialPicker
+          open
+          onClose={() => setSerialPickerArticle(null)}
+          articleId={serialPickerArticle}
+          saleInvoiceId={data.invoice.id}
+          selected={sel[serialPickerArticle]?.series ?? []}
+          onConfirm={(series) => setItem(serialPickerArticle, { series, cantidad: String(series.length) })}
+        />
+      )}
     </div>
   );
 }

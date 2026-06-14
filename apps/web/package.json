@@ -14,6 +14,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsbarcode": "^3.12.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.17.0",
     "next": "^15.1.4",
@@ -22,6 +23,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@types/jsbarcode": "^3.11.4",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",

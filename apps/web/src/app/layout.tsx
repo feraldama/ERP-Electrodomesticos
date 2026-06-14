@@ -3,6 +3,7 @@ import { Fira_Sans, Fira_Code } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 
 const firaSans = Fira_Sans({
   subsets: ["latin"],
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es" className={`${firaSans.variable} ${firaCode.variable}`}>
       <body className="font-sans antialiased">
         <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <ConfirmProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ConfirmProvider>
         </ToastProvider>
       </body>
     </html>

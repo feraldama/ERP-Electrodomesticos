@@ -69,3 +69,20 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Impresion de etiquetas: al imprimir solo se ve el area #etiquetas-print */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #etiquetas-print,
+  #etiquetas-print * {
+    visibility: visible;
+  }
+  #etiquetas-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

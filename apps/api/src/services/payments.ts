@@ -4,10 +4,12 @@ export interface CreateSupplierPaymentInput {
   companyId: number;
   supplierId: number;
   fecha: Date;
-  metodo: string; // EFECTIVO | TARJETA_DEBITO | TARJETA_CREDITO | TRANSFERENCIA
+  metodo: string; // EFECTIVO | TARJETA_DEBITO | TARJETA_CREDITO | TRANSFERENCIA | CHEQUE
   monto: number;
   observacion?: string | null;
   usuarioId?: number | null;
+  // Solo cuando metodo === "CHEQUE": genera un cheque EMITIDO (diferido) ligado al pago.
+  cheque?: { banco?: string | null; numero: string; fechaCobro: Date } | null;
 }
 
 export interface CollectionAllocationInput {
@@ -49,6 +51,24 @@ export async function createSupplierPayment(prisma: Prisma.TransactionClient, in
       usuarioId: input.usuarioId ?? null,
     },
   });
+
+  // Pago con cheque: registra el cheque EMITIDO (diferido), ligado al pago.
+  if (input.metodo === "CHEQUE") {
+    if (!input.cheque?.numero) throw new Error("Falta el numero de cheque");
+    await prisma.check.create({
+      data: {
+        companyId: input.companyId,
+        tipo: "EMITIDO",
+        banco: input.cheque.banco ?? null,
+        numero: input.cheque.numero,
+        monto,
+        fechaEmision: input.fecha,
+        fechaCobro: input.cheque.fechaCobro,
+        estado: "PENDIENTE",
+        paymentMadeId: payment.id,
+      },
+    });
+  }
 
   await prisma.supplierAccountEntry.create({
     data: {

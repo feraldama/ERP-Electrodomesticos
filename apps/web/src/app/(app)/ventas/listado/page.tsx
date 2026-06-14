@@ -7,9 +7,13 @@ import { formatGs, IVA_LABEL } from "@/lib/format";
 import type { SalesInvoice } from "@/lib/types";
 import { MEDIO_PAGO_LABEL } from "@/lib/types";
 import { Input } from "@/components/ui/Field";
+import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { useListQuery } from "@/lib/useListQuery";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { Printer } from "lucide-react";
 
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");
@@ -20,6 +24,7 @@ function nroComp(i: SalesInvoice) {
 }
 
 const columns: DataColumn<SalesInvoice>[] = [
+  { key: "id", header: "ID", render: (v) => <span className="font-mono text-xs text-slate-500">{v.id}</span> },
   { key: "fecha", header: "Fecha", render: (v) => <span className="text-slate-600">{fmtFecha(v.fecha)}</span> },
   {
     key: "comprobante",
@@ -68,14 +73,39 @@ const CUOTA_BADGE: Record<string, string> = {
 
 export default function ListadoVentasPage() {
   const { companyId } = useAuth();
-  const list = useListQuery<SalesInvoice>("/sales", { defaultSort: "fecha", defaultDir: "desc", reloadKey: companyId });
+  const { notify } = useToast();
+  const confirm = useConfirm();
+  const list = useListQuery<SalesInvoice>("/sales", { defaultSort: "id", defaultDir: "desc", reloadKey: companyId });
   const [detail, setDetail] = useState<SalesInvoice | null>(null);
+  const [anulando, setAnulando] = useState(false);
 
   async function openDetail(id: number) {
     try {
       setDetail(await api<SalesInvoice>(`/sales/${id}`));
     } catch {
       /* noop */
+    }
+  }
+
+  async function anular() {
+    if (!detail) return;
+    const ok = await confirm({
+      title: "Anular venta",
+      description: `Vas a anular ${nroComp(detail)}. Se revierte el stock y la cuenta corriente del cliente. No se puede deshacer.`,
+      confirmText: "Anular venta",
+      danger: true,
+    });
+    if (!ok) return;
+    setAnulando(true);
+    try {
+      await api(`/sales/${detail.id}/anular`, { method: "POST" });
+      notify("success", "Venta anulada");
+      setDetail(null);
+      list.reload();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "No se pudo anular la venta");
+    } finally {
+      setAnulando(false);
     }
   }
 
@@ -219,6 +249,26 @@ export default function ListadoVentasPage() {
                 </div>
               </div>
             )}
+
+            <div className="flex items-center justify-between border-t border-border pt-4">
+              <a
+                href={`/print/venta/${detail.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Printer className="h-4 w-4" /> Imprimir
+              </a>
+              {detail.estado === "CONFIRMADO" ? (
+                <Button variant="danger" onClick={anular} loading={anulando}>
+                  Anular venta
+                </Button>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">
+                  Comprobante {detail.estado.toLowerCase()}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </Modal>

@@ -109,7 +109,7 @@ export function PersonsManager({ title, code, subtitle, role = null }: Props) {
         actions={(p) => (
           <button
             onClick={() => openEdit(p)}
-            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Editar"
           >
             <Pencil className="h-4 w-4" />

@@ -97,11 +97,14 @@ export function QuickCreateModal({ kind, open, onClose, onCreated }: QuickCreate
     }
   }
 
+  const dirty = Object.values(values).some((v) => (v ?? "").trim() !== "");
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={cfg.title}
+      confirmClose={dirty}
       footer={
         <>
           <Button variant="secondary" type="button" onClick={onClose}>

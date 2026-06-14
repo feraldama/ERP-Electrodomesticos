@@ -4,6 +4,7 @@ import { useRef } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 interface ModalProps {
   open: boolean;
@@ -12,12 +13,15 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: "md" | "lg";
+  /** Si hay cambios sin guardar: pide confirmacion al cerrar por click-afuera o Escape. */
+  confirmClose?: boolean;
 }
 
 // Modal sobre Radix Dialog: foco atrapado, cierre con Escape/overlay y accesibilidad.
-export function Modal({ open, onClose, title, children, footer, size = "md" }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = "md", confirmClose }: ModalProps) {
   const maxW = size === "lg" ? "max-w-2xl" : "max-w-lg";
   const contentRef = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
 
   // Al abrir, enfoca el primer campo del form (no el boton de cerrar, que Radix toma por defecto)
   // para poder empezar a cargar sin tener que clickear con el mouse.
@@ -31,6 +35,22 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: M
     }
   }
 
+  // Evita perder datos por un click-afuera o Escape accidental cuando hay cambios sin guardar.
+  // Bloquea el cierre nativo y pide confirmacion con el dialogo de la app (no window.confirm).
+  function guardDismiss(e: Event) {
+    if (!confirmClose) return;
+    e.preventDefault();
+    confirm({
+      title: "Cambios sin guardar",
+      description: "Si cerras se perderan los cambios que hiciste. ¿Cerrar de todos modos?",
+      confirmText: "Cerrar sin guardar",
+      cancelText: "Seguir editando",
+      danger: true,
+    }).then((ok) => {
+      if (ok) onClose();
+    });
+  }
+
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
@@ -38,6 +58,8 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: M
         <Dialog.Content
           ref={contentRef}
           onOpenAutoFocus={focusFirstField}
+          onPointerDownOutside={guardDismiss}
+          onEscapeKeyDown={guardDismiss}
           aria-describedby={undefined}
           className={cn(
             "fixed left-1/2 top-[8%] z-50 w-[95vw] -translate-x-1/2 rounded-2xl bg-white shadow-xl animate-zoom-in",

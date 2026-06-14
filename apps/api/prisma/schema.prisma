@@ -222,6 +222,7 @@ model Customer {
   person        Person   @relation(fields: [personId], references: [id])
   salesInvoices SalesInvoice[]
   account       CustomerAccountEntry[]
+  quotes        SalesQuote[]
 
   @@map("customers")
 }
@@ -380,6 +381,7 @@ model Article {
   salesItems    SalesInvoiceItem[]
   creditNoteItems SalesCreditNoteItem[]
   purchaseCreditNoteItems PurchaseCreditNoteItem[]
+  quoteItems    SalesQuoteItem[]
   prices        ArticlePrice[]
 
   @@map("articles")
@@ -486,12 +488,17 @@ model ArticleSerial {
   serie       String
   warehouseId Int?
   estado      SerialEstado @default(EN_STOCK)
+  // Trazabilidad (garantia): de que compra entro, a que venta salio y cuando.
+  purchaseInvoiceId Int?
+  saleInvoiceId     Int?
+  soldAt            DateTime?
   createdAt   DateTime @default(now())
 
   article     Article   @relation(fields: [articleId], references: [id])
   warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
 
   @@unique([articleId, serie])
+  @@index([articleId, estado])
   @@map("article_serials")
 }
 
@@ -642,6 +649,7 @@ model PriceList {
 
   prices    ArticlePrice[]
   invoices  SalesInvoice[]
+  quotes    SalesQuote[]
 
   @@map("price_lists")
 }
@@ -745,6 +753,56 @@ enum MedioPago {
   TARJETA_DEBITO
   TARJETA_CREDITO
   TRANSFERENCIA
+}
+
+// Presupuesto / cotizacion de venta. NO afecta stock ni cuenta corriente; se
+// puede convertir en venta. Puede mezclar rubros (no es comprobante fiscal).
+model SalesQuote {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  customerId    Int
+  priceListId   Int?
+  numero        String   // correlativo por empresa, ej 0000001
+  fecha         DateTime
+  validezDias   Int      @default(15)
+  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
+  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
+  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
+  iva5          Decimal  @default(0) @db.Decimal(18, 4)
+  iva10         Decimal  @default(0) @db.Decimal(18, 4)
+  total         Decimal  @default(0) @db.Decimal(18, 4)
+  estado        QuoteEstado @default(VIGENTE)
+  observacion   String?
+  usuarioId     Int?
+  createdAt     DateTime @default(now())
+
+  customer      Customer @relation(fields: [customerId], references: [id])
+  priceList     PriceList? @relation(fields: [priceListId], references: [id])
+  items         SalesQuoteItem[]
+
+  @@index([companyId, customerId])
+  @@map("sales_quotes")
+}
+
+model SalesQuoteItem {
+  id           Int      @id @default(autoincrement())
+  quoteId      Int
+  articleId    Int
+  cantidad     Decimal  @db.Decimal(18, 4)
+  precioUnitario Decimal @db.Decimal(18, 4)
+  ivaTipo      IvaTipo  @default(IVA10)
+  total        Decimal  @db.Decimal(18, 4)
+
+  quote        SalesQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  article      Article  @relation(fields: [articleId], references: [id])
+
+  @@map("sales_quote_items")
+}
+
+enum QuoteEstado {
+  VIGENTE
+  CONVERTIDO
+  ANULADO
 }
 
 // Nota de credito de venta. Puede devolver articulos (reingresa stock, con

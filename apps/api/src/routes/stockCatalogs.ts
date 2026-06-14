@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permission.js";
 import { listOrPaginate } from "../lib/listQuery.js";
 
 // Categorias
@@ -26,6 +27,7 @@ categoriesRouter.get(
 );
 categoriesRouter.post(
   "/",
+  requirePermission("STKM003"),
   asyncHandler(async (req, res) => {
     const { nombre, parentId } = z
       .object({ nombre: z.string().min(1), parentId: z.number().int().optional().nullable() })
@@ -35,6 +37,7 @@ categoriesRouter.post(
 );
 categoriesRouter.put(
   "/:id",
+  requirePermission("STKM003"),
   asyncHandler(async (req, res) => {
     const { nombre } = z.object({ nombre: z.string().min(1) }).parse(req.body);
     res.json(await prisma.category.update({ where: { id: Number(req.params.id) }, data: { nombre } }));
@@ -69,6 +72,7 @@ unitsRouter.get(
 );
 unitsRouter.post(
   "/",
+  requirePermission("STKM001"),
   asyncHandler(async (req, res) => {
     const { codigo, nombre } = z
       .object({ codigo: z.string().min(1), nombre: z.string().min(1) })
@@ -78,6 +82,7 @@ unitsRouter.post(
 );
 unitsRouter.put(
   "/:id",
+  requirePermission("STKM001"),
   asyncHandler(async (req, res) => {
     const { codigo, nombre } = z
       .object({ codigo: z.string().min(1).optional(), nombre: z.string().min(1).optional() })

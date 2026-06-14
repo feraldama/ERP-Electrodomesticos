@@ -97,6 +97,10 @@ const MODULES: Array<{
       { codigo: "CONM001", nombre: "Plan de cuentas", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/plan-cuentas" },
       { codigo: "CONC002", nombre: "Libro diario", categoria: "CONSULTAS", ruta: "/contabilidad/libro-diario" },
       { codigo: "CONP003", nombre: "Procesar eventos contables", categoria: "PROCESOS", ruta: "/contabilidad/procesar" },
+      { codigo: "CONC004", nombre: "Balance de sumas y saldos", categoria: "CONSULTAS", ruta: "/contabilidad/balance" },
+      { codigo: "CONC005", nombre: "Libro mayor", categoria: "CONSULTAS", ruta: "/contabilidad/mayor" },
+      { codigo: "CONC006", nombre: "Estado de resultados", categoria: "CONSULTAS", ruta: "/contabilidad/estado-resultados" },
+      { codigo: "CONC007", nombre: "Balance general", categoria: "CONSULTAS", ruta: "/contabilidad/balance-general" },
     ],
   },
   {
@@ -279,6 +283,52 @@ async function main() {
       update: { nombre: pl.nombre, condicion: pl.condicion, cuotas: pl.cuotas, orden: pl.orden },
       create: pl,
     });
+  }
+
+  // Plan de cuentas estandar (por empresa). Default razonable PY; editable.
+  const chart: Array<{
+    codigo: string;
+    nombre: string;
+    tipo: "ACTIVO" | "PASIVO" | "PATRIMONIO" | "INGRESO" | "EGRESO" | "ORDEN";
+    imputable: boolean;
+    parent?: string;
+  }> = [
+    { codigo: "1", nombre: "ACTIVO", tipo: "ACTIVO", imputable: false },
+    { codigo: "1.1", nombre: "Activo corriente", tipo: "ACTIVO", imputable: false, parent: "1" },
+    { codigo: "1.1.01", nombre: "Caja y bancos", tipo: "ACTIVO", imputable: false, parent: "1.1" },
+    { codigo: "1.1.01.001", nombre: "Caja", tipo: "ACTIVO", imputable: true, parent: "1.1.01" },
+    { codigo: "1.1.02", nombre: "Creditos", tipo: "ACTIVO", imputable: false, parent: "1.1" },
+    { codigo: "1.1.02.001", nombre: "Deudores por ventas", tipo: "ACTIVO", imputable: true, parent: "1.1.02" },
+    { codigo: "1.1.03", nombre: "Impuestos a recuperar", tipo: "ACTIVO", imputable: false, parent: "1.1" },
+    { codigo: "1.1.03.001", nombre: "IVA Credito Fiscal", tipo: "ACTIVO", imputable: true, parent: "1.1.03" },
+    { codigo: "2", nombre: "PASIVO", tipo: "PASIVO", imputable: false },
+    { codigo: "2.1", nombre: "Pasivo corriente", tipo: "PASIVO", imputable: false, parent: "2" },
+    { codigo: "2.1.01", nombre: "Proveedores", tipo: "PASIVO", imputable: false, parent: "2.1" },
+    { codigo: "2.1.01.001", nombre: "Proveedores", tipo: "PASIVO", imputable: true, parent: "2.1.01" },
+    { codigo: "2.1.02", nombre: "Impuestos a pagar", tipo: "PASIVO", imputable: false, parent: "2.1" },
+    { codigo: "2.1.02.001", nombre: "IVA Debito Fiscal", tipo: "PASIVO", imputable: true, parent: "2.1.02" },
+    { codigo: "4", nombre: "INGRESOS", tipo: "INGRESO", imputable: false },
+    { codigo: "4.1", nombre: "Ventas", tipo: "INGRESO", imputable: false, parent: "4" },
+    { codigo: "4.1.01.001", nombre: "Ventas de mercaderias", tipo: "INGRESO", imputable: true, parent: "4.1" },
+    { codigo: "5", nombre: "EGRESOS", tipo: "EGRESO", imputable: false },
+    { codigo: "5.1", nombre: "Costos", tipo: "EGRESO", imputable: false, parent: "5" },
+    { codigo: "5.1.01.001", nombre: "Compras de mercaderias", tipo: "EGRESO", imputable: true, parent: "5.1" },
+  ];
+  const accId = new Map<string, number>();
+  for (const c of chart) {
+    const rec = await prisma.chartOfAccount.upsert({
+      where: { companyId_codigo: { companyId: company.id, codigo: c.codigo } },
+      update: { nombre: c.nombre, tipo: c.tipo, imputable: c.imputable, parentId: c.parent ? accId.get(c.parent) ?? null : null },
+      create: {
+        companyId: company.id,
+        codigo: c.codigo,
+        nombre: c.nombre,
+        tipo: c.tipo,
+        imputable: c.imputable,
+        parentId: c.parent ? accId.get(c.parent) ?? null : null,
+      },
+    });
+    accId.set(c.codigo, rec.id);
   }
 
   console.log("Seed completo.");

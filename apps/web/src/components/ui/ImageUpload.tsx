@@ -76,7 +76,7 @@ export function ImageUpload({ value, onChange, endpoint = "/articles/upload-imag
               type="button"
               onClick={openPicker}
               disabled={disabled || uploading}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-secondary transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               {uploading ? "Subiendo..." : "Cambiar"}
@@ -85,7 +85,7 @@ export function ImageUpload({ value, onChange, endpoint = "/articles/upload-imag
               type="button"
               onClick={() => onChange(null)}
               disabled={disabled || uploading}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Quitar
@@ -122,7 +122,7 @@ export function ImageUpload({ value, onChange, endpoint = "/articles/upload-imag
           <span className="text-sm font-medium text-secondary">
             {uploading ? "Subiendo imagen..." : "Subir imagen"}
           </span>
-          <span className="text-xs text-slate-400">Arrastra o hace clic. JPG, PNG, WEBP o GIF (max 5 MB).</span>
+          <span className="text-xs text-slate-500">Arrastra o hace clic. JPG, PNG, WEBP o GIF (max 5 MB).</span>
         </button>
       )}
     </div>

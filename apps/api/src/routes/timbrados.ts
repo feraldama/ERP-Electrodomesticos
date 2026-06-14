@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
+import { requirePermission } from "../middleware/permission.js";
 import { listOrPaginate } from "../lib/listQuery.js";
 
 // =====================================================================
@@ -43,6 +44,7 @@ timbradosRouter.get(
 
 timbradosRouter.post(
   "/",
+  requirePermission("VENM008"),
   asyncHandler(async (req, res) => {
     const data = timbradoSchema.parse(req.body);
     const timbrado = await prisma.timbrado.create({
@@ -54,6 +56,7 @@ timbradosRouter.post(
 
 timbradosRouter.put(
   "/:id",
+  requirePermission("VENM008"),
   asyncHandler(async (req, res) => {
     const data = timbradoSchema.partial().parse(req.body);
     const result = await prisma.timbrado.updateMany({
@@ -117,6 +120,7 @@ puntosExpedicionRouter.get(
 
 puntosExpedicionRouter.post(
   "/",
+  requirePermission("VENM009"),
   asyncHandler(async (req, res) => {
     const data = puntoSchema.parse(req.body);
     await validarRefs(req.companyId!, data.timbradoId, data.rubroId);
@@ -129,6 +133,7 @@ puntosExpedicionRouter.post(
 
 puntosExpedicionRouter.put(
   "/:id",
+  requirePermission("VENM009"),
   asyncHandler(async (req, res) => {
     const data = puntoSchema.partial().parse(req.body);
     if (data.timbradoId && data.rubroId) {

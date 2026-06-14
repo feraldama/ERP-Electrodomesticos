@@ -6,9 +6,12 @@ import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
 import type { PurchaseInvoice } from "@/lib/types";
 import { Input } from "@/components/ui/Field";
+import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { useListQuery } from "@/lib/useListQuery";
+import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");
@@ -55,8 +58,33 @@ const columns: DataColumn<PurchaseInvoice>[] = [
 
 export default function ListadoComprasPage() {
   const { companyId } = useAuth();
+  const { notify } = useToast();
+  const confirm = useConfirm();
   const list = useListQuery<PurchaseInvoice>("/purchases", { defaultSort: "fecha", defaultDir: "desc", reloadKey: companyId });
   const [detail, setDetail] = useState<PurchaseInvoice | null>(null);
+  const [anulando, setAnulando] = useState(false);
+
+  async function anular() {
+    if (!detail) return;
+    const ok = await confirm({
+      title: "Anular compra",
+      description: `Vas a anular ${detail.nroComprobante}. Se egresa el stock ingresado y se revierte la cuenta del proveedor. No se puede deshacer.`,
+      confirmText: "Anular compra",
+      danger: true,
+    });
+    if (!ok) return;
+    setAnulando(true);
+    try {
+      await api(`/purchases/${detail.id}/anular`, { method: "POST" });
+      notify("success", "Compra anulada");
+      setDetail(null);
+      list.reload();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "No se pudo anular la compra");
+    } finally {
+      setAnulando(false);
+    }
+  }
 
   async function openDetail(id: number) {
     try {
@@ -154,6 +182,20 @@ export default function ListadoComprasPage() {
                 </div>
               </div>
             </div>
+
+            {detail.estado === "CONFIRMADO" ? (
+              <div className="flex justify-end border-t border-border pt-4">
+                <Button variant="danger" onClick={anular} loading={anulando}>
+                  Anular compra
+                </Button>
+              </div>
+            ) : (
+              <div className="flex justify-end border-t border-border pt-4">
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">
+                  Comprobante {detail.estado.toLowerCase()}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </Modal>

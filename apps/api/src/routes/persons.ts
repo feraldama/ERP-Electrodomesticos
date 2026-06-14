@@ -3,8 +3,12 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
+import { requireAnyPermission } from "../middleware/permission.js";
 import { rucDesdeCedula } from "../services/ruc.js";
 import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
+
+// /persons lo usan los 4 programas de personas (personas/clientes/proveedores/trabajadores).
+const PERSON_PROGRAMS = ["FINM001", "FINM002", "FINM003", "FINM004"];
 
 // Si no se especifica RUC y el documento es numerico, lo calculamos (cedula -> RUC con DV).
 function resolverRuc(ruc: string | null | undefined, nroDoc: string | undefined): string | null {
@@ -111,6 +115,7 @@ personsRouter.get(
 
 personsRouter.post(
   "/",
+  requireAnyPermission(PERSON_PROGRAMS),
   asyncHandler(async (req, res) => {
     const d = personSchema.parse(req.body);
     const person = await prisma.person.create({
@@ -139,6 +144,7 @@ personsRouter.post(
 
 personsRouter.put(
   "/:id",
+  requireAnyPermission(PERSON_PROGRAMS),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const d = personSchema.partial().parse(req.body);
@@ -240,11 +246,26 @@ export const suppliersRouter = Router();
 suppliersRouter.use(authRequired);
 suppliersRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string | undefined)?.trim();
     const suppliers = await prisma.supplier.findMany({
-      where: { activo: true },
+      where: {
+        activo: true,
+        ...(q
+          ? {
+              person: {
+                OR: [
+                  { razonSocial: { contains: q, mode: "insensitive" } },
+                  { nroDoc: { contains: q, mode: "insensitive" } },
+                  { ruc: { contains: q, mode: "insensitive" } },
+                ],
+              },
+            }
+          : {}),
+      },
       include: { person: true },
       orderBy: { person: { razonSocial: "asc" } },
+      take: 50,
     });
     res.json(suppliers);
   })

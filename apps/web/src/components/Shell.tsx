@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Boxes, ShoppingCart, ReceiptText, Wallet, Calculator, Shield, Lock, LogOut, Loader2, type LucideIcon } from "lucide-react";
+import { Home, Boxes, ShoppingCart, ReceiptText, Wallet, Calculator, Shield, Lock, LogOut, Loader2, Menu, X, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { Select } from "@/components/ui/Field";
 import { MenuSearch, loadMenuItems, type MenuItem } from "@/components/MenuSearch";
 import { PageTitle } from "@/components/PageTitle";
 
@@ -23,6 +24,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -31,6 +33,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (user) loadMenuItems().then(setMenuItems);
   }, [user]);
+
+  // En mobile, cerrar el drawer al navegar o con Escape.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSidebarOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   if (loading || !user) {
     return (
@@ -56,15 +70,41 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <PageTitle />
-      {/* Sidebar */}
-      <aside className="flex w-60 flex-col bg-sidebar text-sidebar-text">
-        <div className="flex h-14 items-center gap-2 px-5 font-bold tracking-wide text-white">
-          <span className="flex h-7 w-7 items-center justify-center rounded bg-accent text-sm">E</span>
-          ERP
+
+      {/* Backdrop del drawer (solo mobile) */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden />
+      )}
+
+      {/* Sidebar: fijo en desktop, drawer deslizable en mobile */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col bg-sidebar text-sidebar-text transition-transform duration-200 lg:static lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 items-center justify-between gap-2 px-5 font-bold tracking-wide text-white">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded bg-accent text-sm">E</span>
+            ERP
+          </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Cerrar menu"
+            className="cursor-pointer rounded p-1 text-slate-400 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
         <nav className="flex-1 space-y-0.5 px-2 py-2">
           {visibleNav.map((item, i) => {
-            const active = pathname === item.href;
+            // Activo si es la ruta exacta o si la pantalla actual pertenece a ese modulo
+            // (ej. estando en /stock/articulos se resalta "Control de Stock").
+            const active =
+              item.href === "/"
+                ? pathname === "/"
+                : pathname === item.href ||
+                  (!!item.codigo && programaActual?.moduloCodigo === item.codigo);
             return (
               <div key={item.href}>
                 {i === 1 && (
@@ -74,6 +114,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 )}
                 <Link
                   href={item.href}
+                  onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-200 ${
                     active
                       ? "bg-sidebar-active font-medium text-white"
@@ -96,23 +137,31 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-white px-6">
-          <div className="flex min-w-0 flex-1 items-center">
+        <header className="flex h-14 items-center justify-between gap-3 border-b border-border bg-white px-4 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Abrir menu"
+              className="cursor-pointer rounded-lg p-2 text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
             <MenuSearch />
           </div>
           <div className="flex shrink-0 items-center gap-4 text-sm">
             {user.companies.length > 1 ? (
-              <select
+              <Select
                 value={companyId ?? ""}
                 onChange={(e) => selectCompany(Number(e.target.value))}
-                className="cursor-pointer rounded-lg border border-border bg-white px-2 py-1.5 text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 w-36 sm:w-52"
               >
                 {user.companies.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nombreFantasia ?? c.razonSocial}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
               <span className="hidden font-semibold text-secondary md:inline">
                 {currentCompany?.razonSocial}
@@ -126,15 +175,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
             <button
               onClick={logout}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-secondary transition-colors hover:bg-muted"
+              aria-label="Salir"
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:px-3"
             >
               <LogOut className="h-4 w-4" />
-              Salir
+              <span className="hidden sm:inline">Salir</span>
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-4 sm:p-6">
           {sinPermiso ? (
             <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-slate-400">

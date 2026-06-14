@@ -37,7 +37,11 @@ export function Field({ label, htmlFor, error, required, children, className }: 
         {required && <span className="ml-0.5 text-destructive">*</span>}
       </Label>
       {children}
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

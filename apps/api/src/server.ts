@@ -8,7 +8,7 @@ import { HttpError } from "./http.js";
 import { UPLOADS_DIR } from "./uploads.js";
 import { authRouter } from "./routes/auth.js";
 import { catalogRouter } from "./routes/catalog.js";
-import { articlesRouter, brandsRouter, rubrosRouter } from "./routes/articles.js";
+import { articlesRouter, brandsRouter, rubrosRouter, barcodesRouter, serialsRouter } from "./routes/articles.js";
 import { categoriesRouter, unitsRouter } from "./routes/stockCatalogs.js";
 import { warehousesRouter, stockRouter } from "./routes/warehouses.js";
 import { timbradosRouter, puntosExpedicionRouter } from "./routes/timbrados.js";
@@ -18,10 +18,12 @@ import { priceListsRouter, articlePricesRouter, salesRouter } from "./routes/sal
 import { cobrosRouter } from "./routes/collections.js";
 import { cuentaClienteRouter } from "./routes/customerAccount.js";
 import { cuentaProveedorRouter } from "./routes/supplierAccount.js";
-import { pagosRouter } from "./routes/supplierPayments.js";
+import { pagosRouter, chequesRouter } from "./routes/supplierPayments.js";
 import { notasCreditoVentaRouter } from "./routes/salesCreditNotes.js";
 import { notasCreditoCompraRouter } from "./routes/purchaseCreditNotes.js";
 import { rolesRouter, usersRouter, companiesRouter } from "./routes/admin.js";
+import { contabilidadRouter } from "./routes/accounting.js";
+import { presupuestosRouter } from "./routes/quotes.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 
 const app = express();
@@ -43,6 +45,8 @@ app.use("/api/catalog", catalogRouter);
 app.use("/api/articles", articlesRouter);
 app.use("/api/brands", brandsRouter);
 app.use("/api/rubros", rubrosRouter);
+app.use("/api/barcodes", barcodesRouter);
+app.use("/api/serials", serialsRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/units", unitsRouter);
 app.use("/api/warehouses", warehousesRouter);
@@ -60,11 +64,14 @@ app.use("/api/cobros", cobrosRouter);
 app.use("/api/cuenta-cliente", cuentaClienteRouter);
 app.use("/api/cuenta-proveedor", cuentaProveedorRouter);
 app.use("/api/pagos", pagosRouter);
+app.use("/api/cheques", chequesRouter);
 app.use("/api/notas-credito", notasCreditoVentaRouter);
 app.use("/api/notas-credito-compra", notasCreditoCompraRouter);
 app.use("/api/roles", rolesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/companies", companiesRouter);
+app.use("/api/contabilidad", contabilidadRouter);
+app.use("/api/presupuestos", presupuestosRouter);
 app.use("/api/dashboard", dashboardRouter);
 
 // 404

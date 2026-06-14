@@ -63,6 +63,24 @@ export interface Module {
 export type IvaTipo = "IVA10" | "IVA5" | "EXENTA";
 export type ArticleTipo = "PRODUCTO" | "SERVICIO";
 
+export interface ArticleBarcode {
+  id: number;
+  articleId: number;
+  codigo: string;
+  esPrincipal: boolean;
+}
+
+export type SerialEstado = "EN_STOCK" | "VENDIDO" | "DEVUELTO" | "BAJA";
+
+export interface ArticleSerial {
+  id: number;
+  articleId: number;
+  serie: string;
+  warehouseId: number | null;
+  estado: SerialEstado;
+  warehouse?: { id: number; codigo: string; nombre: string } | null;
+}
+
 export interface Brand {
   id: number;
   nombre: string;
@@ -123,6 +141,46 @@ export interface StockRow {
   cantidad: string;
   article: { id: number; codigo: string; descripcion: string; stockMinimo: string };
   warehouse: { id: number; codigo: string; nombre: string };
+}
+
+// --- Consultas de compras/costos ---
+export interface PurchaseHistoryRow {
+  fecha: string;
+  nroComprobante: string;
+  proveedorId: number;
+  proveedor: string;
+  cantidad: string;
+  costoUnitario: string;
+}
+
+export interface PurchaseHistory {
+  article: { id: number; codigo: string; descripcion: string; costoActual: string };
+  resumen: { compras: number; ultimoCosto: number; costoPromedio: number; costoMin: number; costoMax: number };
+  compras: PurchaseHistoryRow[];
+  porProveedor: Array<{ proveedor: string; ultimoCosto: number; fecha: string; compras: number }>;
+}
+
+export interface CostHistory {
+  article: { id: number; codigo: string; descripcion: string; costoActual: string };
+  historial: Array<{
+    id: number;
+    costo: string;
+    moneda: string;
+    origenTipo: string | null;
+    proveedor: string | null;
+    nroComprobante: string | null;
+    cantidad: string | null;
+    fecha: string;
+  }>;
+}
+
+export interface LastCostRow {
+  articleId: number;
+  codigo: string;
+  descripcion: string;
+  fecha: string;
+  nroComprobante: string;
+  costoUnitario: string;
 }
 
 // --- Personas ---
@@ -302,6 +360,7 @@ export interface CreditableItem {
   articleId: number;
   codigo: string;
   descripcion: string;
+  controlaSerie: boolean;
   ivaTipo: IvaTipo;
   precioUnitario: string;
   vendido: number;
@@ -349,6 +408,98 @@ export interface CreditablePurchase {
   creditableRestante: number;
 }
 
+// --- Contabilidad ---
+export type CuentaTipo = "ACTIVO" | "PASIVO" | "PATRIMONIO" | "INGRESO" | "EGRESO" | "ORDEN";
+
+export interface ChartAccount {
+  id: number;
+  codigo: string;
+  nombre: string;
+  tipo: CuentaTipo;
+  imputable: boolean;
+  parentId: number | null;
+  activo: boolean;
+}
+
+export interface AccountingLine {
+  id: number;
+  debe: string;
+  haber: string;
+  detalle: string | null;
+  account: { codigo: string; nombre: string };
+}
+
+export interface AccountingEntry {
+  id: number;
+  numero: number | null;
+  fecha: string;
+  glosa: string;
+  origenTipo: string | null;
+  lines: AccountingLine[];
+}
+
+export interface PendingSummary {
+  total: number;
+  conError: number;
+  porTipo: Array<{ tipo: string; cantidad: number }>;
+}
+
+export interface TrialBalanceRow {
+  accountId: number;
+  codigo: string;
+  nombre: string;
+  tipo: CuentaTipo | null;
+  debe: number;
+  haber: number;
+  saldoDeudor: number;
+  saldoAcreedor: number;
+}
+
+export interface TrialBalance {
+  filas: TrialBalanceRow[];
+  totales: { debe: number; haber: number; deudor: number; acreedor: number };
+}
+
+export interface LedgerMovement {
+  id: number;
+  fecha: string;
+  numero: number | null;
+  glosa: string;
+  debe: string;
+  haber: string;
+  saldo: number;
+}
+
+export interface Ledger {
+  cuenta: { id: number; codigo: string; nombre: string; tipo: CuentaTipo };
+  movimientos: LedgerMovement[];
+}
+
+export interface StatementRow {
+  codigo: string;
+  nombre: string;
+  monto: number;
+}
+
+export interface IncomeStatement {
+  ingresos: StatementRow[];
+  egresos: StatementRow[];
+  totalIngresos: number;
+  totalEgresos: number;
+  resultado: number;
+}
+
+export interface BalanceSheet {
+  activo: StatementRow[];
+  pasivo: StatementRow[];
+  patrimonio: StatementRow[];
+  resultado: number;
+  totalActivo: number;
+  totalPasivo: number;
+  totalPatrimonio: number;
+  totalPasivoPatrimonio: number;
+}
+
 // Estado de cuenta del proveedor (saldo a pagar = haber - debe)
 export interface SupplierAccount {
   supplier: { id: number; razonSocial: string; documento: string | null };
@@ -365,6 +516,21 @@ export const MEDIO_PAGO_LABEL: Record<MedioPago, string> = {
   TARJETA_CREDITO: "Tarjeta credito",
   TRANSFERENCIA: "Transferencia",
 };
+
+export type ChequeEstado = "PENDIENTE" | "COBRADO" | "ANULADO" | "RECHAZADO";
+
+// Cheque emitido a proveedor (FINI007)
+export interface Cheque {
+  id: number;
+  tipo: "RECIBIDO" | "EMITIDO";
+  banco: string | null;
+  numero: string;
+  monto: string;
+  fechaEmision: string;
+  fechaCobro: string;
+  estado: ChequeEstado;
+  proveedorNombre: string | null;
+}
 
 export interface SalesPayment {
   id: number;
@@ -402,6 +568,32 @@ export interface SalesInvoice {
   }>;
   payments?: SalesPayment[];
   installments?: Installment[];
+}
+
+// Presupuesto / cotizacion de venta
+export interface SalesQuote {
+  id: number;
+  numero: string;
+  fecha: string;
+  validezDias: number;
+  subtotalExenta: string;
+  subtotal5: string;
+  subtotal10: string;
+  iva5: string;
+  iva10: string;
+  total: string;
+  estado: string;
+  observacion: string | null;
+  customer?: { person: { razonSocial: string } };
+  priceList?: { nombre: string } | null;
+  items?: Array<{
+    id: number;
+    cantidad: string;
+    precioUnitario: string;
+    ivaTipo: IvaTipo;
+    total: string;
+    article?: { codigo: string; descripcion: string };
+  }>;
 }
 
 export interface Article {

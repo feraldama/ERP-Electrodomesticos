@@ -1,5 +1,6 @@
 import type { IvaTipo, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
+import { crearSeriesCompra, eliminarSeriesCompra } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
 
 export interface PurchaseItemInput {
@@ -7,6 +8,7 @@ export interface PurchaseItemInput {
   cantidad: number;
   costoUnitario: number; // con IVA incluido (como figura en la factura)
   ivaTipo: IvaTipo;
+  series?: string[]; // requerido (largo === cantidad) si el articulo controla serie
 }
 
 export interface CreatePurchaseInput {
@@ -59,6 +61,23 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   });
 
   const total = subtotalExenta + subtotal5 + subtotal10 + iva5 + iva10;
+
+  // --- Validacion de series para articulos que controlan serie/IMEI ---
+  const articleIds = [...new Set(input.items.map((i) => i.articleId))];
+  const arts = await prisma.article.findMany({
+    where: { id: { in: articleIds } },
+    select: { id: true, controlaSerie: true, descripcion: true },
+  });
+  const artById = new Map(arts.map((a) => [a.id, a]));
+  for (const it of input.items) {
+    const art = artById.get(it.articleId);
+    if (art?.controlaSerie) {
+      const series = (it.series ?? []).map((s) => s.trim()).filter(Boolean);
+      if (!Number.isInteger(it.cantidad) || series.length !== it.cantidad) {
+        throw new Error(`Para "${art.descripcion}" carga ${it.cantidad} serie(s)/IMEI (una por unidad)`);
+      }
+    }
+  }
 
   // --- 1) Cabecera + detalle ---
   const invoice = await prisma.purchaseInvoice.create({
@@ -121,6 +140,16 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
         origenId: invoice.id,
       },
     });
+
+    // Series/IMEI de las unidades ingresadas (si el articulo lo controla)
+    if (artById.get(c.articleId)?.controlaSerie && c.series?.length) {
+      await crearSeriesCompra(prisma, {
+        articleId: c.articleId,
+        warehouseId: input.warehouseId,
+        purchaseInvoiceId: invoice.id,
+        series: c.series,
+      });
+    }
   }
 
   // --- 4) Cuenta corriente proveedor (haber = lo que debemos) ---
@@ -156,4 +185,87 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   });
 
   return invoice;
+}
+
+export interface AnularPurchaseInput {
+  companyId: number;
+  invoiceId: number;
+  usuarioId?: number | null;
+}
+
+/**
+ * Anula una compra CONFIRMADA revirtiendo lo que hizo createPurchase: egresa el stock
+ * ingresado y revierte la cuenta corriente del proveedor, y encola el evento contable.
+ *
+ * Guardas: ya anulada, o con notas de credito de compra.
+ * Nota: puede dejar stock negativo si la mercaderia ya se uso; NO revierte costoActual.
+ */
+export async function anularPurchase(prisma: Prisma.TransactionClient, input: AnularPurchaseInput) {
+  const invoice = await prisma.purchaseInvoice.findFirst({
+    where: { id: input.invoiceId, companyId: input.companyId },
+  });
+  if (!invoice) throw new Error("Compra no encontrada");
+  if (invoice.estado === "ANULADO") throw new Error("La compra ya esta anulada");
+
+  const ncCount = await prisma.purchaseCreditNote.count({ where: { invoiceId: invoice.id } });
+  if (ncCount > 0) throw new Error("La compra tiene notas de credito; no se puede anular");
+
+  // Series/IMEI: bloquea si alguna unidad ya salio; si todas EN_STOCK, las elimina.
+  await eliminarSeriesCompra(prisma, invoice.id);
+
+  // 1) Egreso de stock: invierte cada movimiento de la compra
+  const movs = await prisma.stockMovement.findMany({
+    where: { companyId: input.companyId, origenTipo: "COMPRA", origenId: invoice.id },
+  });
+  for (const m of movs) {
+    await applyStockMovement(prisma, {
+      companyId: input.companyId,
+      articleId: m.articleId,
+      warehouseId: m.warehouseId,
+      cantidad: -Number(m.cantidad), // invierte el ingreso original
+      tipo: "EGRESO",
+      costoUnitario: m.costoUnitario != null ? Number(m.costoUnitario) : null,
+      origenTipo: "ANULACION_COMPRA",
+      origenId: invoice.id,
+      observacion: `Anulacion compra ${invoice.nroComprobante}`,
+      usuarioId: input.usuarioId ?? null,
+    });
+  }
+
+  // 2) Cuenta corriente proveedor: inverso del haber original
+  await prisma.supplierAccountEntry.create({
+    data: {
+      companyId: input.companyId,
+      supplierId: invoice.supplierId,
+      concepto: `Anulacion compra ${invoice.nroComprobante}`,
+      debe: invoice.total,
+      origenTipo: "ANULACION_COMPRA",
+      origenId: invoice.id,
+    },
+  });
+
+  // 3) Evento contable de reversa
+  await prisma.accountingEvent.create({
+    data: {
+      companyId: input.companyId,
+      tipo: "COMPRA_ANULADA",
+      origenTipo: "ANULACION_COMPRA",
+      origenId: invoice.id,
+      payload: {
+        nroComprobante: invoice.nroComprobante,
+        condicion: invoice.condicion,
+        subtotalExenta: invoice.subtotalExenta,
+        subtotal5: invoice.subtotal5,
+        subtotal10: invoice.subtotal10,
+        iva5: invoice.iva5,
+        iva10: invoice.iva10,
+        total: invoice.total,
+      },
+    },
+  });
+
+  // 4) Estado
+  await prisma.purchaseInvoice.update({ where: { id: invoice.id }, data: { estado: "ANULADO" } });
+
+  return { id: invoice.id, nroComprobante: invoice.nroComprobante, estado: "ANULADO" as const };
 }

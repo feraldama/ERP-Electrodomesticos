@@ -81,6 +81,7 @@ export function CrudManager<T extends { id: number }>({
   const [form, setForm] = useState<FormValues>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   // Field cuyo "+" esta abierto (para crear una opcion de catalogo inline).
   const [addField, setAddField] = useState<{ key: string; kind: QuickKind } | null>(null);
 
@@ -95,6 +96,7 @@ export function CrudManager<T extends { id: number }>({
     setEditing(null);
     setForm(emptyForm);
     setErrors({});
+    setDirty(false);
     setOpen(true);
   }
 
@@ -102,6 +104,7 @@ export function CrudManager<T extends { id: number }>({
     setEditing(row);
     setForm(toForm(row));
     setErrors({});
+    setDirty(false);
     setOpen(true);
   }
 
@@ -114,6 +117,17 @@ export function CrudManager<T extends { id: number }>({
     }
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  // Validacion al salir del campo (on-blur): muestra/limpia el error de ese campo.
+  function validateField(f: FieldDef) {
+    if (f.type === "checkbox" || !f.required) return;
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (!String(form[f.key] ?? "").trim()) next[f.key] = `${f.label} es obligatorio`;
+      else delete next[f.key];
+      return next;
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -161,6 +175,7 @@ export function CrudManager<T extends { id: number }>({
 
   function set(key: string, value: FormValue) {
     setForm((f) => ({ ...f, [key]: value }));
+    setDirty(true);
   }
 
   return (
@@ -205,7 +220,7 @@ export function CrudManager<T extends { id: number }>({
         actions={(row) => (
           <button
             onClick={() => openEdit(row)}
-            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Editar"
           >
             <Pencil className="h-4 w-4" />
@@ -222,6 +237,7 @@ export function CrudManager<T extends { id: number }>({
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? `Editar ${entityName}` : `${nuevo} ${entityName}`}
+        confirmClose={dirty}
         footer={
           <>
             <Button variant="secondary" type="button" onClick={() => setOpen(false)}>
@@ -264,6 +280,7 @@ export function CrudManager<T extends { id: number }>({
                     id={f.key}
                     value={String(form[f.key] ?? "")}
                     onChange={(e) => set(f.key, e.target.value)}
+                    onBlur={() => validateField(f)}
                     onAdd={() => setAddField({ key: f.key, kind: f.quickAdd! })}
                   >
                     {f.options?.map((o) => (
@@ -273,7 +290,12 @@ export function CrudManager<T extends { id: number }>({
                     ))}
                   </SelectWithAdd>
                 ) : f.type === "select" ? (
-                  <Select id={f.key} value={String(form[f.key] ?? "")} onChange={(e) => set(f.key, e.target.value)}>
+                  <Select
+                    id={f.key}
+                    value={String(form[f.key] ?? "")}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    onBlur={() => validateField(f)}
+                  >
                     {f.options?.map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
@@ -287,6 +309,7 @@ export function CrudManager<T extends { id: number }>({
                     placeholder={f.placeholder}
                     value={String(form[f.key] ?? "")}
                     onChange={(e) => set(f.key, e.target.value)}
+                    onBlur={() => validateField(f)}
                   />
                 )}
               </Field>

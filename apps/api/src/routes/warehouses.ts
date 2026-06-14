@@ -47,6 +47,7 @@ const warehouseSchema = z.object({
 
 warehousesRouter.post(
   "/",
+  requirePermission("STKM004"),
   asyncHandler(async (req, res) => {
     const data = warehouseSchema.parse(req.body);
     const warehouse = await prisma.warehouse.create({
@@ -58,6 +59,7 @@ warehousesRouter.post(
 
 warehousesRouter.put(
   "/:id",
+  requirePermission("STKM004"),
   asyncHandler(async (req, res) => {
     const data = warehouseSchema.partial().parse(req.body);
     // Scoping por empresa: solo actualiza si el deposito pertenece a la empresa activa
@@ -239,5 +241,114 @@ stockRouter.get(
       take: 200,
     });
     res.json(rows);
+  })
+);
+
+// Historial de compras de un articulo (STKL010): proveedor, fecha, costo + resumen
+stockRouter.get(
+  "/purchase-history",
+  asyncHandler(async (req, res) => {
+    const articleId = Number(req.query.articleId);
+    if (!articleId) throw new HttpError(400, "Falta articleId");
+    const article = await prisma.article.findUnique({
+      where: { id: articleId },
+      select: { id: true, codigo: true, descripcion: true, costoActual: true },
+    });
+    if (!article) throw new HttpError(404, "Articulo no encontrado");
+
+    const items = await prisma.purchaseInvoiceItem.findMany({
+      where: { articleId, invoice: { companyId: req.companyId, estado: { not: "ANULADO" } } },
+      include: { invoice: { select: { fecha: true, nroComprobante: true, supplierId: true } } },
+      orderBy: { invoice: { fecha: "desc" } },
+      take: 300,
+    });
+
+    const supIds = [...new Set(items.map((i) => i.invoice.supplierId))];
+    const sups = await prisma.supplier.findMany({
+      where: { id: { in: supIds } },
+      select: { id: true, person: { select: { razonSocial: true } } },
+    });
+    const supName = new Map(sups.map((s) => [s.id, s.person.razonSocial]));
+
+    const compras = items.map((i) => ({
+      fecha: i.invoice.fecha,
+      nroComprobante: i.invoice.nroComprobante,
+      proveedorId: i.invoice.supplierId,
+      proveedor: supName.get(i.invoice.supplierId) ?? "-",
+      cantidad: i.cantidad,
+      costoUnitario: i.costoUnitario,
+    }));
+
+    const costos = compras.map((c) => Number(c.costoUnitario));
+    const resumen = compras.length
+      ? {
+          compras: compras.length,
+          ultimoCosto: Number(compras[0].costoUnitario),
+          costoPromedio: Math.round(costos.reduce((a, b) => a + b, 0) / costos.length),
+          costoMin: Math.min(...costos),
+          costoMax: Math.max(...costos),
+        }
+      : { compras: 0, ultimoCosto: 0, costoPromedio: 0, costoMin: 0, costoMax: 0 };
+
+    // Ultimo costo por proveedor (compras ya viene ordenado por fecha desc)
+    const porProvMap = new Map<number, { proveedor: string; ultimoCosto: number; fecha: Date; compras: number }>();
+    for (const c of compras) {
+      const ex = porProvMap.get(c.proveedorId);
+      if (!ex) porProvMap.set(c.proveedorId, { proveedor: c.proveedor, ultimoCosto: Number(c.costoUnitario), fecha: c.fecha, compras: 1 });
+      else ex.compras += 1;
+    }
+    const porProveedor = [...porProvMap.values()].sort((a, b) => a.ultimoCosto - b.ultimoCosto);
+
+    res.json({ article, resumen, compras, porProveedor });
+  })
+);
+
+// Historial de costos de un articulo (STKC011)
+stockRouter.get(
+  "/cost-history",
+  asyncHandler(async (req, res) => {
+    const articleId = Number(req.query.articleId);
+    if (!articleId) throw new HttpError(400, "Falta articleId");
+    const article = await prisma.article.findUnique({
+      where: { id: articleId },
+      select: { id: true, codigo: true, descripcion: true, costoActual: true },
+    });
+    if (!article) throw new HttpError(404, "Articulo no encontrado");
+    const rows = await prisma.articleCostHistory.findMany({
+      where: { articleId },
+      orderBy: { fecha: "desc" },
+      take: 200,
+      select: { id: true, costo: true, moneda: true, origenTipo: true, origenId: true, fecha: true },
+    });
+
+    // Enriquecer las entradas de COMPRA con proveedor / comprobante / cantidad
+    const compraIds = [...new Set(rows.filter((h) => h.origenTipo === "COMPRA" && h.origenId).map((h) => h.origenId!))];
+    const [invoices, items] = await Promise.all([
+      prisma.purchaseInvoice.findMany({
+        where: { id: { in: compraIds } },
+        select: { id: true, nroComprobante: true, supplier: { select: { person: { select: { razonSocial: true } } } } },
+      }),
+      prisma.purchaseInvoiceItem.findMany({
+        where: { articleId, invoiceId: { in: compraIds } },
+        select: { invoiceId: true, cantidad: true },
+      }),
+    ]);
+    const invMap = new Map(invoices.map((i) => [i.id, { nroComprobante: i.nroComprobante, proveedor: i.supplier.person.razonSocial }]));
+    const qtyMap = new Map(items.map((it) => [it.invoiceId, it.cantidad]));
+
+    const historial = rows.map((h) => {
+      const inv = h.origenId ? invMap.get(h.origenId) : undefined;
+      return {
+        id: h.id,
+        fecha: h.fecha,
+        costo: h.costo,
+        moneda: h.moneda,
+        origenTipo: h.origenTipo,
+        proveedor: inv?.proveedor ?? null,
+        nroComprobante: inv?.nroComprobante ?? null,
+        cantidad: (h.origenId ? qtyMap.get(h.origenId) : null) ?? null,
+      };
+    });
+    res.json({ article, historial });
   })
 );

@@ -87,9 +87,9 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
       {open && (
         <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-white py-1 shadow-lg">
           {loading && results.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">Buscando...</li>
+            <li className="px-3 py-2 text-sm text-slate-500">Buscando...</li>
           ) : results.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">
+            <li className="px-3 py-2 text-sm text-slate-500">
               Sin resultados. Proba con otro codigo o descripcion.
             </li>
           ) : (
@@ -106,7 +106,7 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
                 }`}
               >
                 <span className="text-foreground">{a.descripcion}</span>
-                <span className="font-mono text-xs font-semibold text-slate-400">{a.codigo}</span>
+                <span className="font-mono text-xs font-semibold text-slate-500">{a.codigo}</span>
               </li>
             ))
           )}

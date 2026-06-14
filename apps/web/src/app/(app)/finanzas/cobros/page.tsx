@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import type { Customer, MedioPago, PendingInstallment } from "@/lib/types";
 import { MEDIO_PAGO_LABEL } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { PersonFormModal } from "@/components/PersonFormModal";
+import { CustomerPicker } from "@/components/CustomerPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 
@@ -29,10 +28,9 @@ function saldoDe(c: PendingInstallment) {
 const MEDIOS: MedioPago[] = ["EFECTIVO", "TARJETA_DEBITO", "TARJETA_CREDITO", "TRANSFERENCIA"];
 
 export default function CobroCuotasPage() {
-  const { companyId } = useAuth();
   const { notify } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerId, setCustomerId] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const customerId = selectedCustomer ? String(selectedCustomer.id) : "";
   const [cuotas, setCuotas] = useState<PendingInstallment[]>([]);
   const [montos, setMontos] = useState<Record<number, string>>({});
   const [metodo, setMetodo] = useState<MedioPago>("EFECTIVO");
@@ -41,10 +39,6 @@ export default function CobroCuotasPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addCust, setAddCust] = useState(false);
-
-  useEffect(() => {
-    api<Customer[]>("/customers").then(setCustomers).catch(() => setCustomers([]));
-  }, [companyId]);
 
   const loadPending = useCallback(async (cid: string) => {
     if (!cid) {
@@ -143,12 +137,7 @@ export default function CobroCuotasPage() {
       <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Cliente" htmlFor="cli" required className="lg:col-span-2">
-            <SelectWithAdd id="cli" value={customerId} onChange={(e) => setCustomerId(e.target.value)} onAdd={() => setAddCust(true)} addTitle="Crear cliente">
-              <option value="">-- Selecciona --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.person.razonSocial}</option>
-              ))}
-            </SelectWithAdd>
+            <CustomerPicker id="cli" selected={selectedCustomer} onSelect={setSelectedCustomer} onAdd={() => setAddCust(true)} />
           </Field>
           <Field label="Medio de pago" htmlFor="met">
             <Select id="met" value={metodo} onChange={(e) => setMetodo(e.target.value as MedioPago)}>
@@ -242,10 +231,9 @@ export default function CobroCuotasPage() {
         role="customer"
         onSaved={async (person) => {
           try {
-            const cs = await api<Customer[]>("/customers");
-            setCustomers(cs);
-            const creado = cs.find((c) => c.person.id === person.id);
-            if (creado) setCustomerId(String(creado.id));
+            const cs = await api<Customer[]>(`/customers?q=${encodeURIComponent(person.nroDoc)}`);
+            const creado = cs.find((c) => c.person.id === person.id) ?? cs[0];
+            if (creado) setSelectedCustomer(creado);
           } catch {
             /* noop */
           }

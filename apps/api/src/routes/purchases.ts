@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
-import { createPurchase } from "../services/purchases.js";
+import { createPurchase, anularPurchase } from "../services/purchases.js";
 import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
 
 export const purchasesRouter = Router();
@@ -27,6 +27,7 @@ const purchaseSchema = z.object({
         cantidad: z.number().positive(),
         costoUnitario: z.number().nonnegative(),
         ivaTipo: z.enum(["IVA10", "IVA5", "EXENTA"]),
+        series: z.array(z.string()).optional(),
       })
     )
     .min(1, "Agrega al menos un articulo"),
@@ -124,6 +125,39 @@ purchasesRouter.get(
   })
 );
 
+// Ultimo costo por proveedor (COML006): para un proveedor, el ultimo costo de
+// cada articulo que se le compro. Debe ir ANTES de "/:id".
+purchasesRouter.get(
+  "/last-costs",
+  asyncHandler(async (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+    if (!supplierId) throw new HttpError(400, "Falta supplierId");
+    const items = await prisma.purchaseInvoiceItem.findMany({
+      where: { invoice: { supplierId, companyId: req.companyId, estado: { not: "ANULADO" } } },
+      include: {
+        invoice: { select: { fecha: true, nroComprobante: true } },
+        article: { select: { codigo: true, descripcion: true } },
+      },
+      orderBy: { invoice: { fecha: "desc" } },
+      take: 1000,
+    });
+    const last = new Map<number, unknown>();
+    for (const it of items) {
+      if (!last.has(it.articleId)) {
+        last.set(it.articleId, {
+          articleId: it.articleId,
+          codigo: it.article.codigo,
+          descripcion: it.article.descripcion,
+          fecha: it.invoice.fecha,
+          nroComprobante: it.invoice.nroComprobante,
+          costoUnitario: it.costoUnitario,
+        });
+      }
+    }
+    res.json([...last.values()].sort((a, b) => (a as { codigo: string }).codigo.localeCompare((b as { codigo: string }).codigo)));
+  })
+);
+
 // Detalle de compra
 purchasesRouter.get(
   "/:id",
@@ -137,5 +171,27 @@ purchasesRouter.get(
     });
     if (!invoice) throw new HttpError(404, "Compra no encontrada");
     res.json(invoice);
+  })
+);
+
+// Anular una compra (egresa el stock ingresado y revierte la cuenta del proveedor)
+purchasesRouter.post(
+  "/:id/anular",
+  requirePermission("COMI001"),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await prisma.$transaction((tx) =>
+        anularPurchase(tx, {
+          companyId: req.companyId!,
+          invoiceId: Number(req.params.id),
+          usuarioId: req.auth?.userId ?? null,
+        })
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      if (err instanceof Error) throw new HttpError(400, err.message);
+      throw err;
+    }
   })
 );

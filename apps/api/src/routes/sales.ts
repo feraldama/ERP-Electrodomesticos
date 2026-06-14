@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
-import { createSale } from "../services/sales.js";
+import { createSale, anularSale } from "../services/sales.js";
 import { parseListParams, paginated, wantsPagination, listOrPaginate } from "../lib/listQuery.js";
 
 // =====================================================================
@@ -44,6 +44,7 @@ priceListsRouter.get(
 
 priceListsRouter.post(
   "/",
+  requirePermission("VENM010"),
   asyncHandler(async (req, res) => {
     const d = priceListSchema.parse(req.body);
     if (d.condicion === "CREDITO" && d.cuotas <= 0) {
@@ -59,6 +60,7 @@ priceListsRouter.post(
 
 priceListsRouter.put(
   "/:id",
+  requirePermission("VENM010"),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const d = priceListSchema.partial().parse(req.body);
@@ -139,6 +141,7 @@ const bulkSchema = z.object({
 
 articlePricesRouter.put(
   "/",
+  requirePermission("VENM011"),
   asyncHandler(async (req, res) => {
     const d = bulkSchema.parse(req.body);
     const list = await prisma.priceList.findUnique({ where: { id: d.priceListId } });
@@ -229,6 +232,7 @@ const bulkByArticleSchema = z.object({
 
 articlePricesRouter.put(
   "/by-article",
+  requirePermission("VENM011"),
   asyncHandler(async (req, res) => {
     const d = bulkByArticleSchema.parse(req.body);
     const article = await prisma.article.findUnique({ where: { id: d.articleId } });
@@ -265,6 +269,7 @@ const saleSchema = z.object({
         articleId: z.number().int(),
         cantidad: z.number().positive(),
         precioUnitario: z.number().nonnegative(),
+        series: z.array(z.string()).optional(),
       })
     )
     .min(1, "Agrega al menos un articulo"),
@@ -323,6 +328,7 @@ salesRouter.post(
 );
 
 const salesSortable = {
+  id: "id",
   fecha: "fecha",
   comprobante: "numero",
   cliente: "customer.person.razonSocial",
@@ -387,5 +393,27 @@ salesRouter.get(
     });
     if (!invoice) throw new HttpError(404, "Venta no encontrada");
     res.json(invoice);
+  })
+);
+
+// Anular una venta (revierte stock, cuenta corriente, cuotas y contabilidad)
+salesRouter.post(
+  "/:id/anular",
+  requirePermission("VENI001"),
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await prisma.$transaction((tx) =>
+        anularSale(tx, {
+          companyId: req.companyId!,
+          invoiceId: Number(req.params.id),
+          usuarioId: req.auth?.userId ?? null,
+        })
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      if (err instanceof Error) throw new HttpError(400, err.message);
+      throw err;
+    }
   })
 );

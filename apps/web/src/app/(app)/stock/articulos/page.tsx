@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { ImageUpload } from "@/components/ui/ImageUpload";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
+import { ArticleSerialsManager } from "@/components/ArticleSerialsManager";
 import { useListQuery } from "@/lib/useListQuery";
 import { Plus, Pencil } from "lucide-react";
 
@@ -89,6 +90,7 @@ export default function ArticulosPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [addKind, setAddKind] = useState<QuickKind | null>(null);
 
   // Catalogo creado inline desde un "+": se agrega a la lista y se selecciona.
@@ -124,6 +126,7 @@ export default function ArticulosPage() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setErrors({});
+    setDirty(false);
     setOpen(true);
   }
 
@@ -146,6 +149,7 @@ export default function ArticulosPage() {
       activo: a.activo,
     });
     setErrors({});
+    setDirty(false);
     setOpen(true);
   }
 
@@ -156,6 +160,17 @@ export default function ArticulosPage() {
     if (Number(form.precioVenta) < 0) e.precioVenta = "No puede ser negativo";
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  // Validacion on-blur de los campos requeridos.
+  function validateField(key: "codigo" | "descripcion") {
+    const label = key === "codigo" ? "El codigo" : "La descripcion";
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (!form[key].trim()) next[key] = `${label} es obligatori${key === "codigo" ? "o" : "a"}`;
+      else delete next[key];
+      return next;
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -197,6 +212,7 @@ export default function ArticulosPage() {
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+    setDirty(true);
   }
 
   return (
@@ -242,7 +258,7 @@ export default function ArticulosPage() {
         actions={(a) => (
           <button
             onClick={() => openEdit(a)}
-            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Editar"
           >
             <Pencil className="h-4 w-4" />
@@ -261,6 +277,7 @@ export default function ArticulosPage() {
         onClose={() => setOpen(false)}
         title={editing ? `Editar articulo` : "Nuevo articulo"}
         size="lg"
+        confirmClose={dirty}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} type="button">
@@ -274,7 +291,7 @@ export default function ArticulosPage() {
       >
         <form id="article-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Codigo" htmlFor="codigo" required error={errors.codigo}>
-            <Input id="codigo" value={form.codigo} onChange={(e) => set("codigo", e.target.value)} />
+            <Input id="codigo" value={form.codigo} onChange={(e) => set("codigo", e.target.value)} onBlur={() => validateField("codigo")} />
           </Field>
           <Field label="Tipo" htmlFor="tipo">
             <Select id="tipo" value={form.tipo} onChange={(e) => set("tipo", e.target.value as FormState["tipo"])}>
@@ -284,7 +301,7 @@ export default function ArticulosPage() {
           </Field>
 
           <Field label="Descripcion" htmlFor="descripcion" required error={errors.descripcion} className="sm:col-span-2">
-            <Input id="descripcion" value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
+            <Input id="descripcion" value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} onBlur={() => validateField("descripcion")} />
           </Field>
 
           <Field label="Marca" htmlFor="brand">
@@ -372,6 +389,12 @@ export default function ArticulosPage() {
             </div>
           )}
         </form>
+
+        {editing && form.controlaSerie && (
+          <div className="mt-4">
+            <ArticleSerialsManager articleId={editing.id} />
+          </div>
+        )}
       </Modal>
 
       {addKind && (

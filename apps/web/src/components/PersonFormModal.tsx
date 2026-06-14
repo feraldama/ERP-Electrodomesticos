@@ -102,6 +102,7 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   // Inicializa el form al abrir (desde la persona en edicion o vacio con rol preseleccionado).
   useEffect(() => {
@@ -117,10 +118,12 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
           }
     );
     setErrors({});
+    setDirty(false);
   }, [open, editing, role]);
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+    setDirty(true);
   }
 
   // Auto-calcula el RUC con su digito verificador (modulo 11) para CI y RUC.
@@ -137,6 +140,17 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
     if (!form.razonSocial.trim()) e.razonSocial = "Nombre / razon social obligatorio";
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  // Validacion on-blur de los campos requeridos.
+  function validateField(key: "nroDoc" | "razonSocial") {
+    const label = key === "nroDoc" ? "Documento" : "Nombre / razon social";
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (!form[key].trim()) next[key] = `${label} obligatorio`;
+      else delete next[key];
+      return next;
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -182,6 +196,7 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
       onClose={onClose}
       title={editing ? "Editar persona" : "Nueva persona"}
       size="lg"
+      confirmClose={dirty}
       footer={
         <>
           <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
@@ -201,10 +216,10 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
             </Select>
           </Field>
           <Field label="Nro. de documento" htmlFor="nroDoc" required error={errors.nroDoc}>
-            <Input id="nroDoc" value={form.nroDoc} onChange={(e) => set("nroDoc", e.target.value)} />
+            <Input id="nroDoc" value={form.nroDoc} onChange={(e) => set("nroDoc", e.target.value)} onBlur={() => validateField("nroDoc")} />
           </Field>
           <Field label="Nombre / Razon social" htmlFor="razonSocial" required error={errors.razonSocial} className="sm:col-span-2">
-            <Input id="razonSocial" value={form.razonSocial} onChange={(e) => set("razonSocial", e.target.value)} />
+            <Input id="razonSocial" value={form.razonSocial} onChange={(e) => set("razonSocial", e.target.value)} onBlur={() => validateField("razonSocial")} />
           </Field>
           <Field
             label={

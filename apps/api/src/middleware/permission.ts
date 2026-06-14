@@ -19,3 +19,22 @@ export function requirePermission(codigo: string) {
     }
   };
 }
+
+/**
+ * Como requirePermission pero pasa si el usuario tiene CUALQUIERA de los codigos
+ * (o es superadmin). Util para endpoints compartidos por varios programas
+ * (ej. /persons lo usan FINM001..FINM004).
+ */
+export function requireAnyPermission(codigos: string[]) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      if (!req.auth) throw new HttpError(401, "No autenticado");
+      for (const codigo of codigos) {
+        if (await userCan(req.auth.userId, codigo)) return next();
+      }
+      throw new HttpError(403, "No tenes permiso para esta accion");
+    } catch (err) {
+      next(err);
+    }
+  };
+}

@@ -2,14 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import type { MedioPago, Supplier, SupplierAccount } from "@/lib/types";
-import { MEDIO_PAGO_LABEL } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { PersonFormModal } from "@/components/PersonFormModal";
+import { SupplierPicker } from "@/components/SupplierPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 
@@ -20,25 +18,32 @@ function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");
 }
 
-const MEDIOS: MedioPago[] = ["EFECTIVO", "TARJETA_DEBITO", "TARJETA_CREDITO", "TRANSFERENCIA"];
+// El pago a proveedor admite cheque (emitido, diferido); los cobros NO, por eso es local.
+type MetodoPago = MedioPago | "CHEQUE";
+const MEDIOS: Array<{ value: MetodoPago; label: string }> = [
+  { value: "EFECTIVO", label: "Efectivo" },
+  { value: "TARJETA_DEBITO", label: "Tarjeta debito" },
+  { value: "TARJETA_CREDITO", label: "Tarjeta credito" },
+  { value: "TRANSFERENCIA", label: "Transferencia" },
+  { value: "CHEQUE", label: "Cheque" },
+];
 
 export default function PagoProveedoresPage() {
-  const { companyId } = useAuth();
   const { notify } = useToast();
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [supplierId, setSupplierId] = useState("");
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const supplierId = selectedSupplier ? String(selectedSupplier.id) : "";
   const [account, setAccount] = useState<SupplierAccount | null>(null);
   const [monto, setMonto] = useState("");
-  const [metodo, setMetodo] = useState<MedioPago>("EFECTIVO");
+  const [metodo, setMetodo] = useState<MetodoPago>("EFECTIVO");
   const [fecha, setFecha] = useState(today());
   const [observacion, setObservacion] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addSup, setAddSup] = useState(false);
-
-  useEffect(() => {
-    api<Supplier[]>("/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
-  }, [companyId]);
+  // Datos del cheque (solo cuando metodo === "CHEQUE")
+  const [banco, setBanco] = useState("");
+  const [chequeNumero, setChequeNumero] = useState("");
+  const [chequeFecha, setChequeFecha] = useState("");
 
   function loadAccount(id: string) {
     if (!id) {
@@ -63,6 +68,10 @@ export default function PagoProveedoresPage() {
   async function confirmar() {
     if (!supplierId) return notify("error", "Selecciona un proveedor");
     if (montoNum <= 0) return notify("error", "Ingresa el monto a pagar");
+    if (metodo === "CHEQUE") {
+      if (!chequeNumero.trim()) return notify("error", "Indica el numero de cheque");
+      if (!chequeFecha) return notify("error", "Indica la fecha de cobro del cheque");
+    }
 
     setSaving(true);
     try {
@@ -74,11 +83,17 @@ export default function PagoProveedoresPage() {
           metodo,
           monto: montoNum,
           observacion: observacion.trim() || null,
+          ...(metodo === "CHEQUE"
+            ? { cheque: { banco: banco.trim() || null, numero: chequeNumero.trim(), fechaCobro: chequeFecha } }
+            : {}),
         }),
       });
       notify("success", `Pago registrado: ${formatGs(montoNum)} Gs`);
       setMonto("");
       setObservacion("");
+      setBanco("");
+      setChequeNumero("");
+      setChequeFecha("");
       loadAccount(supplierId);
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Error al registrar el pago");
@@ -99,12 +114,7 @@ export default function PagoProveedoresPage() {
 
       <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <Field label="Proveedor" htmlFor="prov" required className="mb-4">
-          <SelectWithAdd id="prov" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} onAdd={() => setAddSup(true)} addTitle="Crear proveedor">
-            <option value="">-- Selecciona --</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>{s.person.razonSocial}</option>
-            ))}
-          </SelectWithAdd>
+          <SupplierPicker id="prov" selected={selectedSupplier} onSelect={setSelectedSupplier} onAdd={() => setAddSup(true)} />
         </Field>
 
         {supplierId && (
@@ -130,15 +140,31 @@ export default function PagoProveedoresPage() {
             )}
           </Field>
           <Field label="Medio de pago" htmlFor="met">
-            <Select id="met" value={metodo} onChange={(e) => setMetodo(e.target.value as MedioPago)}>
+            <Select id="met" value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)}>
               {MEDIOS.map((m) => (
-                <option key={m} value={m}>{MEDIO_PAGO_LABEL[m]}</option>
+                <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </Select>
           </Field>
           <Field label="Fecha" htmlFor="fecha" required>
             <Input id="fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </Field>
+
+          {/* Datos del cheque (solo si el medio es Cheque) */}
+          {metodo === "CHEQUE" && (
+            <>
+              <Field label="Banco" htmlFor="banco">
+                <Input id="banco" value={banco} onChange={(e) => setBanco(e.target.value)} placeholder="ej Itau" />
+              </Field>
+              <Field label="Nro de cheque" htmlFor="chnum" required>
+                <Input id="chnum" value={chequeNumero} onChange={(e) => setChequeNumero(e.target.value)} />
+              </Field>
+              <Field label="Fecha de cobro" htmlFor="chfec" required>
+                <Input id="chfec" type="date" value={chequeFecha} onChange={(e) => setChequeFecha(e.target.value)} />
+              </Field>
+            </>
+          )}
+
           <Field label="Observacion" htmlFor="obs" className="sm:col-span-3">
             <Input id="obs" value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder="Opcional" />
           </Field>
@@ -188,10 +214,9 @@ export default function PagoProveedoresPage() {
         role="supplier"
         onSaved={async (person) => {
           try {
-            const ss = await api<Supplier[]>("/suppliers");
-            setSuppliers(ss);
-            const creado = ss.find((s) => s.person.id === person.id);
-            if (creado) setSupplierId(String(creado.id));
+            const ss = await api<Supplier[]>(`/suppliers?q=${encodeURIComponent(person.nroDoc)}`);
+            const creado = ss.find((s) => s.person.id === person.id) ?? ss[0];
+            if (creado) setSelectedSupplier(creado);
           } catch {
             /* noop */
           }

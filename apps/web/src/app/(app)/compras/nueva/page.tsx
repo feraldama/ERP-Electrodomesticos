@@ -10,6 +10,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal } from "@/components/QuickCreateModal";
 import { PersonFormModal } from "@/components/PersonFormModal";
+import { SupplierPicker } from "@/components/SupplierPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
@@ -21,6 +22,12 @@ interface Line {
   cantidad: string;
   costoUnitario: string;
   ivaTipo: IvaTipo;
+  series: string; // textarea (una serie/IMEI por renglon); solo si el articulo controla serie
+}
+
+// Series no vacias de una linea.
+function parseSeries(raw: string): string[] {
+  return raw.split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
 function today() {
@@ -30,10 +37,9 @@ function today() {
 export default function CargarCompraPage() {
   const { companyId } = useAuth();
   const { notify } = useToast();
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
-  const [supplierId, setSupplierId] = useState("");
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [warehouseId, setWarehouseId] = useState("");
   const [nroComprobante, setNroComprobante] = useState("");
   const [timbrado, setTimbrado] = useState("");
@@ -45,7 +51,6 @@ export default function CargarCompraPage() {
   const [addSup, setAddSup] = useState(false);
 
   useEffect(() => {
-    api<Supplier[]>("/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
     api<Warehouse[]>("/warehouses")
       .then((ws) => {
         setWarehouses(ws);
@@ -61,7 +66,7 @@ export default function CargarCompraPage() {
     }
     setLines((ls) => [
       ...ls,
-      { article: a, cantidad: "1", costoUnitario: a.costoActual ?? "0", ivaTipo: a.ivaTipo },
+      { article: a, cantidad: a.controlaSerie ? "0" : "1", costoUnitario: a.costoActual ?? "0", ivaTipo: a.ivaTipo, series: "" },
     ]);
   }
 
@@ -90,7 +95,10 @@ export default function CargarCompraPage() {
   }
 
   async function confirm() {
-    if (!supplierId) return notify("error", "Selecciona un proveedor");
+    if (!selectedSupplier) {
+      document.getElementById("prov")?.focus();
+      return notify("error", "Selecciona un proveedor");
+    }
     if (!warehouseId) return notify("error", "Selecciona un deposito");
     if (!nroComprobante.trim()) return notify("error", "Ingresa el nro de comprobante");
     if (lines.length === 0) return notify("error", "Agrega al menos un articulo");
@@ -101,7 +109,7 @@ export default function CargarCompraPage() {
       await api("/purchases", {
         method: "POST",
         body: JSON.stringify({
-          supplierId: Number(supplierId),
+          supplierId: selectedSupplier.id,
           warehouseId: Number(warehouseId),
           nroComprobante: nroComprobante.trim(),
           timbrado: timbrado.trim() || null,
@@ -112,6 +120,7 @@ export default function CargarCompraPage() {
             cantidad: Number(l.cantidad),
             costoUnitario: Number(l.costoUnitario),
             ivaTipo: l.ivaTipo,
+            ...(l.article.controlaSerie ? { series: parseSeries(l.series) } : {}),
           })),
         }),
       });
@@ -141,12 +150,7 @@ export default function CargarCompraPage() {
       <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Proveedor" htmlFor="prov" required>
-            <SelectWithAdd id="prov" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} onAdd={() => setAddSup(true)} addTitle="Crear proveedor">
-              <option value="">-- Selecciona --</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.person.razonSocial}</option>
-              ))}
-            </SelectWithAdd>
+            <SupplierPicker id="prov" selected={selectedSupplier} onSelect={setSelectedSupplier} onAdd={() => setAddSup(true)} />
           </Field>
           <Field label="Deposito de ingreso" htmlFor="dep" required>
             <SelectWithAdd id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} onAdd={() => setAddWh(true)} addTitle="Crear deposito">
@@ -196,15 +200,38 @@ export default function CargarCompraPage() {
                 <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">Busca y agrega articulos a la compra.</td></tr>
               ) : (
                 lines.map((l) => (
-                  <tr key={l.article.id} className="border-b border-border last:border-0">
+                  <tr key={l.article.id} className="border-b border-border last:border-0 align-top">
                     <td className="px-3 py-2">
                       <div className="text-foreground">{l.article.descripcion}</div>
-                      <div className="font-mono text-xs text-slate-400">{l.article.codigo}</div>
+                      <div className="font-mono text-xs text-slate-500">{l.article.codigo}</div>
+                      {l.article.controlaSerie && (
+                        <div className="mt-2">
+                          <textarea
+                            value={l.series}
+                            onChange={(e) =>
+                              updateLine(l.article.id, {
+                                series: e.target.value,
+                                cantidad: String(parseSeries(e.target.value).length),
+                              })
+                            }
+                            rows={3}
+                            placeholder="Una serie / IMEI por renglon"
+                            className="w-full rounded-lg border border-border px-2 py-1 font-mono text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <p className="mt-0.5 text-[11px] text-slate-500">{parseSeries(l.series).length} unidad(es) por serie</p>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <input type="number" min={0} value={l.cantidad}
-                        onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
-                        className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      {l.article.controlaSerie ? (
+                        <span className="inline-block w-20 rounded-lg bg-muted px-2 py-1 text-right text-sm text-slate-600">
+                          {l.cantidad}
+                        </span>
+                      ) : (
+                        <input type="number" min={0} value={l.cantidad}
+                          onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
+                          className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <MoneyInput value={l.costoUnitario}
@@ -268,10 +295,9 @@ export default function CargarCompraPage() {
         role="supplier"
         onSaved={async (person) => {
           try {
-            const ss = await api<Supplier[]>("/suppliers");
-            setSuppliers(ss);
-            const creado = ss.find((s) => s.person.id === person.id);
-            if (creado) setSupplierId(String(creado.id));
+            const ss = await api<Supplier[]>(`/suppliers?q=${encodeURIComponent(person.nroDoc)}`);
+            const creado = ss.find((s) => s.person.id === person.id) ?? ss[0];
+            if (creado) setSelectedSupplier(creado);
           } catch {
             /* noop */
           }

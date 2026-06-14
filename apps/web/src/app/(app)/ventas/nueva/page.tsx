@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
@@ -11,6 +12,7 @@ import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal } from "@/components/QuickCreateModal";
 import { PersonFormModal } from "@/components/PersonFormModal";
 import { CustomerPicker } from "@/components/CustomerPicker";
+import { SerialPicker } from "@/components/SerialPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
@@ -21,6 +23,7 @@ interface Line {
   article: Article;
   cantidad: string;
   precioUnitario: string;
+  series: string[]; // solo si el articulo controla serie (cantidad = series.length)
 }
 
 type MedioPago = "EFECTIVO" | "TARJETA_DEBITO" | "TARJETA_CREDITO" | "TRANSFERENCIA";
@@ -36,7 +39,7 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function NuevaVentaPage() {
+function NuevaVentaInner() {
   const { companyId } = useAuth();
   const { notify } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -53,6 +56,10 @@ export default function NuevaVentaPage() {
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
   const [addCust, setAddCust] = useState(false);
+  const [serialPickerArticle, setSerialPickerArticle] = useState<number | null>(null);
+  const [quoteId, setQuoteId] = useState<number | null>(null);
+  const searchParams = useSearchParams();
+  const prefilledRef = useRef(false);
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -70,6 +77,39 @@ export default function NuevaVentaPage() {
       })
       .catch(() => setPriceLists([]));
   }, [companyId]);
+
+  // Precarga desde un presupuesto (?presupuesto=ID). Setea priceListId con lines
+  // todavia vacio para que el recalculo no pise los precios del presupuesto.
+  useEffect(() => {
+    const pid = searchParams.get("presupuesto");
+    if (!pid || prefilledRef.current || priceLists.length === 0) return;
+    prefilledRef.current = true;
+    (async () => {
+      try {
+        const q = await api<{
+          priceListId: number | null;
+          observacion: string | null;
+          customer: Customer;
+          items: Array<{ articleId: number; cantidad: string; precioUnitario: string }>;
+        }>(`/presupuestos/${pid}`);
+        setQuoteId(Number(pid));
+        if (q.customer) setSelectedCustomer(q.customer);
+        if (q.priceListId) setPriceListId(String(q.priceListId));
+        setObservacion(q.observacion ?? "");
+        const arts = await Promise.all(q.items.map((it) => api<Article>(`/articles/${it.articleId}`).catch(() => null)));
+        const nuevas: Line[] = [];
+        q.items.forEach((it, i) => {
+          const a = arts[i];
+          if (a) nuevas.push({ article: a, cantidad: String(Number(it.cantidad)), precioUnitario: String(Math.round(Number(it.precioUnitario))), series: [] });
+        });
+        setLines(nuevas);
+        notify("success", "Presupuesto cargado: revisa, agrega forma de pago y confirma");
+      } catch {
+        notify("error", "No se pudo cargar el presupuesto");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, priceLists.length]);
 
   const selectedList = useMemo(
     () => priceLists.find((l) => String(l.id) === priceListId),
@@ -107,13 +147,19 @@ export default function NuevaVentaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceListId]);
 
+  // Las series pertenecen a un deposito: si se cambia, se limpian las elegidas.
+  useEffect(() => {
+    setLines((ls) => ls.map((l) => (l.article.controlaSerie ? { ...l, series: [], cantidad: "0" } : l)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId]);
+
   async function addArticle(a: Article) {
     if (lines.some((l) => l.article.id === a.id)) {
       notify("error", "El articulo ya esta en la venta");
       return;
     }
     const precio = await resolvePrecio(a, priceListId);
-    setLines((ls) => [...ls, { article: a, cantidad: "1", precioUnitario: precio }]);
+    setLines((ls) => [...ls, { article: a, cantidad: a.controlaSerie ? "0" : "1", precioUnitario: precio, series: [] }]);
   }
 
   function updateLine(id: number, patch: Partial<Line>) {
@@ -211,6 +257,7 @@ export default function NuevaVentaPage() {
             articleId: l.article.id,
             cantidad: Number(l.cantidad),
             precioUnitario: Number(l.precioUnitario),
+            ...(l.article.controlaSerie ? { series: l.series } : {}),
           })),
           ...(esCredito ? { cuotas: nCuotas } : {}),
           payments: pagosArr,
@@ -223,6 +270,10 @@ export default function NuevaVentaPage() {
           ? `Venta registrada en ${invoices.length} comprobantes: ${nros}`
           : `Venta registrada: ${nros}`
       );
+      if (quoteId) {
+        try { await api(`/presupuestos/${quoteId}/convertir`, { method: "POST" }); } catch { /* noop */ }
+        setQuoteId(null);
+      }
       setLines([]);
       setObservacion("");
       setPagos({});
@@ -297,16 +348,31 @@ export default function NuevaVentaPage() {
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Busca y agrega articulos a la venta.</td></tr>
               ) : (
                 lines.map((l) => (
-                  <tr key={l.article.id} className="border-b border-border last:border-0">
+                  <tr key={l.article.id} className="border-b border-border last:border-0 align-top">
                     <td className="px-3 py-2">
                       <div className="text-foreground">{l.article.descripcion}</div>
                       <div className="font-mono text-xs text-slate-500">{l.article.codigo}</div>
+                      {l.article.controlaSerie && (
+                        <button
+                          type="button"
+                          onClick={() => setSerialPickerArticle(l.article.id)}
+                          className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline"
+                        >
+                          {l.series.length > 0 ? `Series: ${l.series.length} elegida(s)` : "Elegir series / IMEI"}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-slate-600">{l.article.rubro?.nombre ?? <span className="text-destructive">sin rubro</span>}</td>
                     <td className="px-3 py-2 text-right">
-                      <input type="number" min={0} value={l.cantidad}
-                        onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
-                        className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      {l.article.controlaSerie ? (
+                        <span className="inline-block w-20 rounded-lg bg-muted px-2 py-1 text-right text-sm text-slate-600">
+                          {l.cantidad}
+                        </span>
+                      ) : (
+                        <input type="number" min={0} value={l.cantidad}
+                          onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
+                          className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <MoneyInput value={l.precioUnitario}
@@ -437,6 +503,24 @@ export default function NuevaVentaPage() {
         }}
       />
 
+      {serialPickerArticle != null &&
+        (() => {
+          const line = lines.find((l) => l.article.id === serialPickerArticle);
+          if (!line) return null;
+          return (
+            <SerialPicker
+              open
+              onClose={() => setSerialPickerArticle(null)}
+              articleId={serialPickerArticle}
+              warehouseId={warehouseId ? Number(warehouseId) : null}
+              selected={line.series}
+              onConfirm={(series) =>
+                updateLine(serialPickerArticle, { series, cantidad: String(series.length) })
+              }
+            />
+          );
+        })()}
+
       <PersonFormModal
         open={addCust}
         onClose={() => setAddCust(false)}
@@ -461,5 +545,13 @@ function Row({ label, value, muted }: { label: string; value: number; muted?: bo
       <span>{label}</span>
       <span className="font-mono">{formatGs(value)}</span>
     </div>
+  );
+}
+
+export default function NuevaVentaPage() {
+  return (
+    <Suspense fallback={<p className="text-slate-400">Cargando...</p>}>
+      <NuevaVentaInner />
+    </Suspense>
   );
 }
