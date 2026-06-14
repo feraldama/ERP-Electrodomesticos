@@ -4,7 +4,9 @@ import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
+import { requirePermission } from "../middleware/permission.js";
 import { createPurchase } from "../services/purchases.js";
+import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
 
 export const purchasesRouter = Router();
 purchasesRouter.use(authRequired, companyRequired);
@@ -33,6 +35,7 @@ const purchaseSchema = z.object({
 // Crear compra (transaccional)
 purchasesRouter.post(
   "/",
+  requirePermission("COMI001"),
   asyncHandler(async (req, res) => {
     const d = purchaseSchema.parse(req.body);
     const companyId = req.companyId!;
@@ -78,20 +81,46 @@ purchasesRouter.post(
 );
 
 // Listado de compras
+const purchasesSortable = {
+  fecha: "fecha",
+  comprobante: "nroComprobante",
+  proveedor: "supplier.person.razonSocial",
+  condicion: "condicion",
+  total: "total",
+} as const;
+
 purchasesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string | undefined)?.trim();
-    const invoices = await prisma.purchaseInvoice.findMany({
-      where: {
-        companyId: req.companyId,
-        ...(q ? { nroComprobante: { contains: q, mode: "insensitive" } } : {}),
-      },
-      include: { supplier: { include: { person: true } } },
-      orderBy: { fecha: "desc" },
-      take: 200,
+    const where = {
+      companyId: req.companyId,
+      ...(q
+        ? {
+            OR: [
+              { nroComprobante: { contains: q, mode: "insensitive" as const } },
+              { supplier: { person: { razonSocial: { contains: q, mode: "insensitive" as const } } } },
+            ],
+          }
+        : {}),
+    };
+    const include = { supplier: { include: { person: true } } };
+    const { skip, take, orderBy, page, pageSize } = parseListParams(req.query, {
+      sortable: purchasesSortable,
+      defaultSort: "fecha",
+      defaultDir: "desc",
     });
-    res.json(invoices);
+
+    if (!wantsPagination(req.query)) {
+      const invoices = await prisma.purchaseInvoice.findMany({ where, include, orderBy, take: 200 });
+      return res.json(invoices);
+    }
+
+    const [items, total] = await prisma.$transaction([
+      prisma.purchaseInvoice.findMany({ where, include, orderBy, skip, take }),
+      prisma.purchaseInvoice.count({ where }),
+    ]);
+    res.json(paginated(items, total, page, pageSize));
   })
 );
 

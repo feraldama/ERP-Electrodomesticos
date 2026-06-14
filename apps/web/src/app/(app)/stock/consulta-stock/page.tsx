@@ -1,42 +1,67 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import { Input, Select } from "@/components/ui/Field";
+import { DataTable, type DataColumn } from "@/components/ui/DataTable";
+import { useListQuery } from "@/lib/useListQuery";
 import type { StockRow, Warehouse } from "@/lib/types";
+
+function esBajo(r: StockRow) {
+  const minimo = Number(r.article.stockMinimo);
+  return minimo > 0 && Number(r.cantidad) <= minimo;
+}
+
+const columns: DataColumn<StockRow>[] = [
+  { key: "deposito", header: "Deposito", render: (r) => <span className="text-slate-600">{r.warehouse.nombre}</span> },
+  {
+    key: "codigo",
+    header: "Codigo",
+    render: (r) => <span className="font-mono text-xs font-semibold text-secondary">{r.article.codigo}</span>,
+  },
+  { key: "articulo", header: "Articulo", render: (r) => <span className="text-foreground">{r.article.descripcion}</span> },
+  {
+    key: "cantidad",
+    header: "Cantidad",
+    align: "right",
+    render: (r) => (
+      <span className={`font-mono font-medium ${esBajo(r) ? "text-destructive" : "text-foreground"}`}>
+        {formatGs(Number(r.cantidad))}
+      </span>
+    ),
+  },
+  {
+    key: "stockMinimo",
+    header: "Stock min.",
+    align: "right",
+    render: (r) => <span className="font-mono text-slate-500">{formatGs(Number(r.article.stockMinimo))}</span>,
+  },
+  {
+    header: "Alerta",
+    align: "center",
+    render: (r) =>
+      esBajo(r) ? (
+        <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-destructive">Bajo</span>
+      ) : null,
+  },
+];
 
 export default function ConsultaStockPage() {
   const { companyId } = useAuth();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [rows, setRows] = useState<StockRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [warehouseId, setWarehouseId] = useState("");
-  const [q, setQ] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (warehouseId) params.set("warehouseId", warehouseId);
-    if (q) params.set("q", q);
-    try {
-      setRows(await api<StockRow[]>(`/stock${params.toString() ? `?${params}` : ""}`));
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [warehouseId, q]);
+  const list = useListQuery<StockRow>("/stock", {
+    defaultSort: "articulo",
+    extraParams: { warehouseId: warehouseId || undefined },
+    reloadKey: companyId,
+  });
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses").then(setWarehouses).catch(() => setWarehouses([]));
   }, [companyId]);
-
-  useEffect(() => {
-    const t = setTimeout(load, 300);
-    return () => clearTimeout(t);
-  }, [load, companyId]);
 
   return (
     <div>
@@ -63,65 +88,30 @@ export default function ConsultaStockPage() {
         </div>
         <div className="w-72">
           <label className="mb-1 block text-sm font-medium text-secondary">Buscar articulo</label>
-          <Input placeholder="Codigo o descripcion..." value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input placeholder="Codigo o descripcion..." value={list.q} onChange={(e) => list.setQ(e.target.value)} />
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/60 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-3 font-medium">Deposito</th>
-              <th className="px-4 py-3 font-medium">Codigo</th>
-              <th className="px-4 py-3 font-medium">Articulo</th>
-              <th className="px-4 py-3 text-right font-medium">Cantidad</th>
-              <th className="px-4 py-3 text-right font-medium">Stock min.</th>
-              <th className="px-4 py-3 text-center font-medium">Alerta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">Cargando...</td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                  Sin existencias registradas. El stock se genera al cargar compras o ajustes de inventario.
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => {
-                const cantidad = Number(r.cantidad);
-                const minimo = Number(r.article.stockMinimo);
-                const bajo = minimo > 0 && cantidad <= minimo;
-                return (
-                  <tr key={r.id} className="border-b border-border last:border-0 transition-colors hover:bg-muted/40">
-                    <td className="px-4 py-3 text-slate-600">{r.warehouse.nombre}</td>
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-secondary">{r.article.codigo}</td>
-                    <td className="px-4 py-3 text-foreground">{r.article.descripcion}</td>
-                    <td className={`px-4 py-3 text-right font-mono font-medium ${bajo ? "text-destructive" : "text-foreground"}`}>
-                      {formatGs(cantidad)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-500">{formatGs(minimo)}</td>
-                    <td className="px-4 py-3 text-center">
-                      {bajo && (
-                        <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-destructive">
-                          Bajo
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && rows.length > 0 && (
-        <p className="mt-3 text-xs text-slate-400">{rows.length} registro(s)</p>
-      )}
+      <DataTable
+        columns={columns}
+        rows={list.rows}
+        loading={list.loading}
+        rowKey={(r) => r.id}
+        total={list.total}
+        page={list.page}
+        pageSize={list.pageSize}
+        sort={list.sort}
+        dir={list.dir}
+        onSort={list.toggleSort}
+        onPage={list.setPage}
+        onPageSize={list.setPageSize}
+        emptyTitle={list.q ? "Sin resultados" : "Sin existencias registradas"}
+        emptyDescription={
+          list.q
+            ? "Proba con otro codigo o descripcion."
+            : "El stock se genera al cargar compras o ajustes de inventario."
+        }
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired, signToken } from "../middleware/auth.js";
+import { getUserPermisos } from "../services/permissions.js";
 
 export const authRouter = Router();
 
@@ -40,6 +41,8 @@ authRouter.post(
       isSuperadmin: user.isSuperadmin,
     });
 
+    const { codigos: permisos } = await getUserPermisos(user.id);
+
     res.json({
       token,
       user: {
@@ -48,6 +51,7 @@ authRouter.post(
         nombre: user.nombre,
         isSuperadmin: user.isSuperadmin,
         roles: user.roles.map((r) => r.role.nombre),
+        permisos,
         companies: user.userCompanies.map((uc) => ({
           id: uc.company.id,
           razonSocial: uc.company.razonSocial,
@@ -70,12 +74,14 @@ authRouter.get(
       },
     });
     if (!user) throw new HttpError(404, "Usuario no encontrado");
+    const { codigos: permisos } = await getUserPermisos(user.id);
     res.json({
       id: user.id,
       username: user.username,
       nombre: user.nombre,
       isSuperadmin: user.isSuperadmin,
       roles: user.roles.map((r) => r.role.nombre),
+      permisos,
       companies: user.userCompanies.map((uc) => ({
         id: uc.company.id,
         razonSocial: uc.company.razonSocial,

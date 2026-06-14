@@ -57,3 +57,32 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   }
   return data as T;
 }
+
+// Origen del backend (sin el sufijo /api), para servir archivos estaticos como /uploads/...
+const ASSET_ORIGIN = API_URL.replace(/\/api\/?$/, "");
+
+// Convierte una ruta relativa de archivo subido en URL absoluta servible.
+export function assetUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${ASSET_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+// Sube un archivo (multipart) y devuelve la ruta relativa guardada en el server.
+export async function uploadFile(path: string, file: File, field = "imagen"): Promise<{ url: string }> {
+  const finalHeaders: Record<string, string> = {};
+  const token = getToken();
+  if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
+  const companyId = getCompanyId();
+  if (companyId) finalHeaders["X-Company-Id"] = String(companyId);
+
+  const body = new FormData();
+  body.append(field, file);
+
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers: finalHeaders, body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error ?? "Error al subir el archivo");
+  }
+  return data as { url: string };
+}

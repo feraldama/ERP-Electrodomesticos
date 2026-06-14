@@ -5,8 +5,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Brand } from "@/lib/types";
 
 const columns: ColumnDef<Brand>[] = [
-  { header: "Marca", render: (b) => <span className="font-medium text-foreground">{b.nombre}</span> },
-  { header: "Estado", align: "center", render: (b) => <StatusBadge activo={b.activo ?? true} /> },
+  { header: "Marca", sortKey: "nombre", render: (b) => <span className="font-medium text-foreground">{b.nombre}</span> },
+  { header: "Estado", sortKey: "estado", align: "center", render: (b) => <StatusBadge activo={b.activo ?? true} /> },
 ];
 
 const fields: FieldDef[] = [
@@ -26,7 +26,7 @@ export default function MarcasPage() {
       fields={fields}
       emptyForm={{ nombre: "", activo: true }}
       toForm={(b) => ({ nombre: b.nombre, activo: b.activo ?? true })}
-      searchText={(b) => b.nombre}
+      searchable
     />
   );
 }

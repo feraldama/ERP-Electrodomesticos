@@ -6,9 +6,9 @@ import { useAuth } from "@/lib/auth";
 import type { Warehouse } from "@/lib/types";
 
 const columns: ColumnDef<Warehouse>[] = [
-  { header: "Codigo", render: (w) => <span className="font-mono text-xs font-semibold text-secondary">{w.codigo}</span> },
-  { header: "Deposito", render: (w) => <span className="font-medium text-foreground">{w.nombre}</span> },
-  { header: "Estado", align: "center", render: (w) => <StatusBadge activo={w.activo} /> },
+  { header: "Codigo", sortKey: "codigo", render: (w) => <span className="font-mono text-xs font-semibold text-secondary">{w.codigo}</span> },
+  { header: "Deposito", sortKey: "nombre", render: (w) => <span className="font-medium text-foreground">{w.nombre}</span> },
+  { header: "Estado", sortKey: "estado", align: "center", render: (w) => <StatusBadge activo={w.activo} /> },
 ];
 
 const fields: FieldDef[] = [
@@ -31,7 +31,8 @@ export default function DepositosPage() {
       fields={fields}
       emptyForm={{ codigo: "", nombre: "", activo: true }}
       toForm={(w) => ({ codigo: w.codigo, nombre: w.nombre, activo: w.activo })}
-      searchText={(w) => `${w.codigo} ${w.nombre}`}
+      searchable
+      defaultSort="codigo"
       reloadKey={companyId}
       feminine={false}
     />

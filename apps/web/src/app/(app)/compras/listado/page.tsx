@@ -1,39 +1,62 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
 import type { PurchaseInvoice } from "@/lib/types";
 import { Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { DataTable, type DataColumn } from "@/components/ui/DataTable";
+import { useListQuery } from "@/lib/useListQuery";
 
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");
 }
 
+const columns: DataColumn<PurchaseInvoice>[] = [
+  { key: "fecha", header: "Fecha", render: (p) => <span className="text-slate-600">{fmtFecha(p.fecha)}</span> },
+  {
+    key: "comprobante",
+    header: "Comprobante",
+    render: (p) => <span className="font-mono text-xs font-semibold text-secondary">{p.nroComprobante}</span>,
+  },
+  { key: "proveedor", header: "Proveedor", render: (p) => <span className="text-foreground">{p.supplier?.person.razonSocial ?? "-"}</span> },
+  {
+    key: "condicion",
+    header: "Condicion",
+    align: "center",
+    render: (p) => (
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+          p.condicion === "CREDITO" ? "bg-amber-50 text-amber-700" : "bg-accent/10 text-accent"
+        }`}
+      >
+        {p.condicion === "CREDITO" ? "Credito" : "Contado"}
+      </span>
+    ),
+  },
+  {
+    key: "total",
+    header: "Total",
+    align: "right",
+    render: (p) => <span className="font-mono font-medium text-foreground">{formatGs(p.total)}</span>,
+  },
+  {
+    header: "",
+    align: "right",
+    render: () => (
+      <svg viewBox="0 0 24 24" className="ml-auto h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.8}>
+        <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+];
+
 export default function ListadoComprasPage() {
   const { companyId } = useAuth();
-  const [items, setItems] = useState<PurchaseInvoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const list = useListQuery<PurchaseInvoice>("/purchases", { defaultSort: "fecha", defaultDir: "desc", reloadKey: companyId });
   const [detail, setDetail] = useState<PurchaseInvoice | null>(null);
-
-  const load = useCallback(async (search: string) => {
-    setLoading(true);
-    try {
-      setItems(await api<PurchaseInvoice[]>(`/purchases${search ? `?q=${encodeURIComponent(search)}` : ""}`));
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => load(q), 300);
-    return () => clearTimeout(t);
-  }, [q, load, companyId]);
 
   async function openDetail(id: number) {
     try {
@@ -54,52 +77,30 @@ export default function ListadoComprasPage() {
       </div>
 
       <div className="mb-4 w-72">
-        <Input placeholder="Buscar por nro de comprobante..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input
+          placeholder="Buscar por comprobante o proveedor..."
+          value={list.q}
+          onChange={(e) => list.setQ(e.target.value)}
+        />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/60 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-3 font-medium">Fecha</th>
-              <th className="px-4 py-3 font-medium">Comprobante</th>
-              <th className="px-4 py-3 font-medium">Proveedor</th>
-              <th className="px-4 py-3 text-center font-medium">Condicion</th>
-              <th className="px-4 py-3 text-right font-medium">Total</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Cargando...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">{q ? "Sin resultados." : "No hay compras registradas."}</td></tr>
-            ) : (
-              items.map((p) => (
-                <tr key={p.id} onClick={() => openDetail(p.id)}
-                  className="cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-muted/40">
-                  <td className="px-4 py-3 text-slate-600">{fmtFecha(p.fecha)}</td>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-secondary">{p.nroComprobante}</td>
-                  <td className="px-4 py-3 text-foreground">{p.supplier?.person.razonSocial ?? "-"}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.condicion === "CREDITO" ? "bg-amber-50 text-amber-700" : "bg-accent/10 text-accent"}`}>
-                      {p.condicion === "CREDITO" ? "Credito" : "Contado"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-medium text-foreground">{formatGs(p.total)}</td>
-                  <td className="px-4 py-3 text-right text-slate-400">
-                    <svg viewBox="0 0 24 24" className="ml-auto h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && items.length > 0 && <p className="mt-3 text-xs text-slate-400">{items.length} compra(s)</p>}
+      <DataTable
+        columns={columns}
+        rows={list.rows}
+        loading={list.loading}
+        rowKey={(p) => p.id}
+        total={list.total}
+        page={list.page}
+        pageSize={list.pageSize}
+        sort={list.sort}
+        dir={list.dir}
+        onSort={list.toggleSort}
+        onPage={list.setPage}
+        onPageSize={list.setPageSize}
+        onRowClick={(p) => openDetail(p.id)}
+        emptyTitle={list.q ? "Sin resultados" : "No hay compras registradas"}
+        emptyDescription={list.q ? "Proba con otro comprobante o proveedor." : undefined}
+      />
 
       {/* Detalle */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={`Compra ${detail?.nroComprobante ?? ""}`} size="lg">

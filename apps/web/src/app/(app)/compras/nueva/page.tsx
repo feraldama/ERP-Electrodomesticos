@@ -7,6 +7,10 @@ import { formatGs } from "@/lib/format";
 import type { Article, IvaTipo, Supplier, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
+import { QuickCreateModal } from "@/components/QuickCreateModal";
+import { PersonFormModal } from "@/components/PersonFormModal";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
 import { desglosarIvaIncluido } from "@/lib/iva";
@@ -37,6 +41,8 @@ export default function CargarCompraPage() {
   const [condicion, setCondicion] = useState<"CONTADO" | "CREDITO">("CONTADO");
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
+  const [addWh, setAddWh] = useState(false);
+  const [addSup, setAddSup] = useState(false);
 
   useEffect(() => {
     api<Supplier[]>("/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
@@ -135,19 +141,19 @@ export default function CargarCompraPage() {
       <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Proveedor" htmlFor="prov" required>
-            <Select id="prov" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <SelectWithAdd id="prov" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} onAdd={() => setAddSup(true)} addTitle="Crear proveedor">
               <option value="">-- Selecciona --</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.person.razonSocial}</option>
               ))}
-            </Select>
+            </SelectWithAdd>
           </Field>
           <Field label="Deposito de ingreso" htmlFor="dep" required>
-            <Select id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+            <SelectWithAdd id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} onAdd={() => setAddWh(true)} addTitle="Crear deposito">
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.codigo} - {w.nombre}</option>
               ))}
-            </Select>
+            </SelectWithAdd>
           </Field>
           <Field label="Condicion" htmlFor="cond">
             <Select id="cond" value={condicion} onChange={(e) => setCondicion(e.target.value as "CONTADO" | "CREDITO")}>
@@ -201,9 +207,9 @@ export default function CargarCompraPage() {
                         className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <input type="number" min={0} value={l.costoUnitario}
-                        onChange={(e) => updateLine(l.article.id, { costoUnitario: e.target.value })}
-                        className="w-28 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                      <MoneyInput value={l.costoUnitario}
+                        onChange={(v) => updateLine(l.article.id, { costoUnitario: v })}
+                        className="h-8 w-28 px-2 py-1" />
                     </td>
                     <td className="px-3 py-2 text-center">
                       <Select value={l.ivaTipo} onChange={(e) => updateLine(l.article.id, { ivaTipo: e.target.value as IvaTipo })} className="w-24">
@@ -245,6 +251,32 @@ export default function CargarCompraPage() {
           </Button>
         </div>
       </div>
+
+      <QuickCreateModal
+        kind="warehouse"
+        open={addWh}
+        onClose={() => setAddWh(false)}
+        onCreated={(item) => {
+          setWarehouses((p) => [...p, item as unknown as Warehouse]);
+          setWarehouseId(String(item.id));
+        }}
+      />
+
+      <PersonFormModal
+        open={addSup}
+        onClose={() => setAddSup(false)}
+        role="supplier"
+        onSaved={async (person) => {
+          try {
+            const ss = await api<Supplier[]>("/suppliers");
+            setSuppliers(ss);
+            const creado = ss.find((s) => s.person.id === person.id);
+            if (creado) setSupplierId(String(creado.id));
+          } catch {
+            /* noop */
+          }
+        }}
+      />
     </div>
   );
 }

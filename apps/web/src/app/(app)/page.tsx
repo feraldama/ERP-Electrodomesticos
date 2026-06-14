@@ -91,7 +91,7 @@ export default function DashboardPage() {
                 <div className="min-w-0">
                   <p className="truncate text-xs font-medium uppercase tracking-wide text-slate-500">{k.label}</p>
                   <p className="truncate font-mono text-xl font-semibold text-foreground">{k.value}</p>
-                  {k.hint && <p className="truncate text-xs text-slate-400">{k.hint}</p>}
+                  {k.hint && <p className="truncate text-xs text-slate-500">{k.hint}</p>}
                 </div>
               </div>
             ))}
@@ -119,7 +119,7 @@ export default function DashboardPage() {
               <span className="mt-4 text-center text-sm font-semibold uppercase tracking-wide text-secondary">
                 {m.nombre}
               </span>
-              <span className="mt-1 font-mono text-xs text-slate-400">{m.programs.length} programas</span>
+              <span className="mt-1 font-mono text-xs text-slate-500">{m.programs.length} programas</span>
             </Link>
           ))}
         </div>

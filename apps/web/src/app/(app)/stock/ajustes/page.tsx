@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth";
 import type { Article, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Select } from "@/components/ui/Field";
+import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
+import { QuickCreateModal } from "@/components/QuickCreateModal";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
 import { Trash2 } from "lucide-react";
@@ -23,6 +25,7 @@ export default function AjustesPage() {
   const [warehouseId, setWarehouseId] = useState("");
   const [observacion, setObservacion] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
+  const [addWh, setAddWh] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -95,14 +98,14 @@ export default function AjustesPage() {
         {/* Cabecera */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Deposito" htmlFor="dep" required>
-            <Select id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+            <SelectWithAdd id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} onAdd={() => setAddWh(true)} addTitle="Crear deposito">
               {warehouses.length === 0 && <option value="">Sin depositos</option>}
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.codigo} - {w.nombre}
                 </option>
               ))}
-            </Select>
+            </SelectWithAdd>
           </Field>
           <Field label="Observacion" htmlFor="obs">
             <input
@@ -187,6 +190,16 @@ export default function AjustesPage() {
           </Button>
         </div>
       </div>
+
+      <QuickCreateModal
+        kind="warehouse"
+        open={addWh}
+        onClose={() => setAddWh(false)}
+        onCreated={(item) => {
+          setWarehouses((p) => [...p, item as unknown as Warehouse]);
+          setWarehouseId(String(item.id));
+        }}
+      />
     </div>
   );
 }

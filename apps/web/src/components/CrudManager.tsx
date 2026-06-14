@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { DataTable, type DataColumn } from "@/components/ui/DataTable";
+import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
+import { QuickCreateModal, type QuickKind } from "@/components/QuickCreateModal";
+import { useListQuery } from "@/lib/useListQuery";
 import { Plus, Pencil } from "lucide-react";
 
 type FormValue = string | boolean;
@@ -15,17 +18,21 @@ type FormValues = Record<string, FormValue>;
 export interface FieldDef {
   key: string;
   label: string;
-  type?: "text" | "number" | "select" | "checkbox";
+  type?: "text" | "number" | "select" | "checkbox" | "date";
   required?: boolean;
   options?: Array<{ value: string; label: string }>;
   colSpan?: 1 | 2;
   placeholder?: string;
+  numeric?: boolean; // select cuyo valor es un id numerico: se envia como number (o null si vacio)
+  quickAdd?: QuickKind; // select con boton "+" para crear una opcion nueva inline
 }
 
 export interface ColumnDef<T> {
   header: string;
   render: (row: T) => React.ReactNode;
   align?: "left" | "right" | "center";
+  /** Clave de orden del backend; si se define, la columna es ordenable. */
+  sortKey?: string;
 }
 
 interface CrudManagerProps<T extends { id: number }> {
@@ -38,16 +45,13 @@ interface CrudManagerProps<T extends { id: number }> {
   fields: FieldDef[];
   toForm: (row: T) => FormValues;
   emptyForm: FormValues;
-  searchText?: (row: T) => string; // habilita busqueda client-side
+  searchable?: boolean; // muestra el buscador (la busqueda es server-side via ?q=)
+  defaultSort?: string; // clave de orden inicial del backend (default "nombre")
   reloadKey?: unknown; // fuerza recarga al cambiar (ej empresa activa)
   feminine?: boolean; // concordancia de genero (default true: marca/categoria)
+  // Catalogo creado inline desde un field con quickAdd: la pagina agrega la opcion a su lista.
+  onCatalogCreated?: (fieldKey: string, item: { id: number } & Record<string, unknown>) => void;
 }
-
-const ALIGN: Record<string, string> = {
-  left: "text-left",
-  right: "text-right",
-  center: "text-center",
-};
 
 export function CrudManager<T extends { id: number }>({
   title,
@@ -59,43 +63,33 @@ export function CrudManager<T extends { id: number }>({
   fields,
   toForm,
   emptyForm,
-  searchText,
+  searchable,
+  defaultSort = "nombre",
   reloadKey,
   feminine = true,
+  onCatalogCreated,
 }: CrudManagerProps<T>) {
   const { notify } = useToast();
   const nuevo = feminine ? "Nueva" : "Nuevo";
   const creada = feminine ? "creada" : "creado";
   const actualizada = feminine ? "actualizada" : "actualizado";
-  const [items, setItems] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+
+  const list = useListQuery<T>(endpoint, { defaultSort, reloadKey });
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<T | null>(null);
   const [form, setForm] = useState<FormValues>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // Field cuyo "+" esta abierto (para crear una opcion de catalogo inline).
+  const [addField, setAddField] = useState<{ key: string; kind: QuickKind } | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setItems(await api<T[]>(endpoint));
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [endpoint]);
-
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
-
-  const filtered = useMemo(() => {
-    if (!searchText || !q) return items;
-    return items.filter((r) => searchText(r).toLowerCase().includes(q.toLowerCase()));
-  }, [items, q, searchText]);
+  const dataColumns: DataColumn<T>[] = columns.map((c) => ({
+    key: c.sortKey,
+    header: c.header,
+    render: c.render,
+    align: c.align,
+  }));
 
   function openNew() {
     setEditing(null);
@@ -130,9 +124,22 @@ export function CrudManager<T extends { id: number }>({
     const payload: Record<string, unknown> = {};
     for (const f of fields) {
       const v = form[f.key];
-      if (f.type === "number") payload[f.key] = Number(v) || 0;
-      else if (f.type === "checkbox") payload[f.key] = Boolean(v);
-      else payload[f.key] = typeof v === "string" ? v.trim() : v;
+      if (f.type === "checkbox") {
+        payload[f.key] = Boolean(v);
+      } else if (f.type === "number") {
+        const s = String(v ?? "").trim();
+        // Campo numerico opcional vacio -> null (no 0)
+        payload[f.key] = s === "" ? (f.required ? 0 : null) : Number(s);
+      } else if (f.type === "date") {
+        const s = String(v ?? "").trim();
+        payload[f.key] = s === "" ? null : s;
+      } else if (f.numeric) {
+        // Select con id numerico
+        const s = String(v ?? "").trim();
+        payload[f.key] = s === "" ? (f.required ? undefined : null) : Number(s);
+      } else {
+        payload[f.key] = typeof v === "string" ? v.trim() : v;
+      }
     }
 
     try {
@@ -144,7 +151,7 @@ export function CrudManager<T extends { id: number }>({
         notify("success", `${cap(entityName)} ${creada}`);
       }
       setOpen(false);
-      load();
+      list.reload();
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Error al guardar");
     } finally {
@@ -172,76 +179,44 @@ export function CrudManager<T extends { id: number }>({
         </Button>
       </div>
 
-      {searchText && (
+      {searchable && (
         <div className="mb-4 w-72">
-          <Input placeholder={`Buscar ${entityName}...`} value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input
+            placeholder={`Buscar ${entityName}...`}
+            value={list.q}
+            onChange={(e) => list.setQ(e.target.value)}
+          />
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/60 text-left text-xs uppercase tracking-wide text-slate-500">
-              {columns.map((c, i) => (
-                <th key={i} className={`px-4 py-3 font-medium ${ALIGN[c.align ?? "left"]}`}>
-                  {c.header}
-                </th>
-              ))}
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={columns.length + 1} className="px-4 py-10 text-center text-slate-400">
-                  Cargando...
-                </td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + 1} className="p-0">
-                  <EmptyState
-                    title={q ? "Sin resultados" : `No hay ${entityName}s todavia`}
-                    description={
-                      q ? "Proba con otro termino de busqueda." : `Crea la primera ${entityName} para empezar.`
-                    }
-                    action={
-                      !q ? (
-                        <Button onClick={openNew}>
-                          {nuevo} {entityName}
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <tr key={row.id} className="border-b border-border last:border-0 transition-colors hover:bg-muted/40">
-                  {columns.map((c, i) => (
-                    <td key={i} className={`px-4 py-3 ${ALIGN[c.align ?? "left"]}`}>
-                      {c.render(row)}
-                    </td>
-                  ))}
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => openEdit(row)}
-                      className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
-                      aria-label="Editar"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && filtered.length > 0 && (
-        <p className="mt-3 text-xs text-slate-400">{filtered.length} registro(s)</p>
-      )}
+      <DataTable
+        columns={dataColumns}
+        rows={list.rows}
+        loading={list.loading}
+        rowKey={(row) => row.id}
+        total={list.total}
+        page={list.page}
+        pageSize={list.pageSize}
+        sort={list.sort}
+        dir={list.dir}
+        onSort={list.toggleSort}
+        onPage={list.setPage}
+        onPageSize={list.setPageSize}
+        actions={(row) => (
+          <button
+            onClick={() => openEdit(row)}
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
+            aria-label="Editar"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
+        emptyTitle={list.q ? "Sin resultados" : `No hay ${entityName}s todavia`}
+        emptyDescription={
+          list.q ? "Proba con otro termino de busqueda." : `Crea la primera ${entityName} para empezar.`
+        }
+        emptyAction={!list.q ? <Button onClick={openNew}>{`${nuevo} ${entityName}`}</Button> : undefined}
+      />
 
       <Modal
         open={open}
@@ -284,7 +259,20 @@ export function CrudManager<T extends { id: number }>({
                 error={errors[f.key]}
                 className={f.colSpan === 2 ? "sm:col-span-2" : ""}
               >
-                {f.type === "select" ? (
+                {f.type === "select" && f.quickAdd ? (
+                  <SelectWithAdd
+                    id={f.key}
+                    value={String(form[f.key] ?? "")}
+                    onChange={(e) => set(f.key, e.target.value)}
+                    onAdd={() => setAddField({ key: f.key, kind: f.quickAdd! })}
+                  >
+                    {f.options?.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </SelectWithAdd>
+                ) : f.type === "select" ? (
                   <Select id={f.key} value={String(form[f.key] ?? "")} onChange={(e) => set(f.key, e.target.value)}>
                     {f.options?.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -295,7 +283,7 @@ export function CrudManager<T extends { id: number }>({
                 ) : (
                   <Input
                     id={f.key}
-                    type={f.type === "number" ? "number" : "text"}
+                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
                     placeholder={f.placeholder}
                     value={String(form[f.key] ?? "")}
                     onChange={(e) => set(f.key, e.target.value)}
@@ -306,6 +294,18 @@ export function CrudManager<T extends { id: number }>({
           })}
         </form>
       </Modal>
+
+      {addField && (
+        <QuickCreateModal
+          kind={addField.kind}
+          open={addField !== null}
+          onClose={() => setAddField(null)}
+          onCreated={(item) => {
+            set(addField.key, String(item.id));
+            onCatalogCreated?.(addField.key, item);
+          }}
+        />
+      )}
     </div>
   );
 }

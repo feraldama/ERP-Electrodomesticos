@@ -4,7 +4,7 @@ import { CrudManager, type ColumnDef, type FieldDef } from "@/components/CrudMan
 import type { Category } from "@/lib/types";
 
 const columns: ColumnDef<Category>[] = [
-  { header: "Categoria", render: (c) => <span className="font-medium text-foreground">{c.nombre}</span> },
+  { header: "Categoria", sortKey: "nombre", render: (c) => <span className="font-medium text-foreground">{c.nombre}</span> },
 ];
 
 const fields: FieldDef[] = [{ key: "nombre", label: "Nombre", required: true, colSpan: 2 }];
@@ -21,7 +21,7 @@ export default function CategoriasPage() {
       fields={fields}
       emptyForm={{ nombre: "" }}
       toForm={(c) => ({ nombre: c.nombre })}
-      searchText={(c) => c.nombre}
+      searchable
     />
   );
 }

@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { rucDesdeCedula } from "../services/ruc.js";
+import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
 
 // Si no se especifica RUC y el documento es numerico, lo calculamos (cedula -> RUC con DV).
 function resolverRuc(ruc: string | null | undefined, nroDoc: string | undefined): string | null {
@@ -41,6 +42,8 @@ const personSchema = z.object({
   razonSocial: z.string().min(1),
   nombreFantasia: z.string().optional().nullable(),
   direccion: z.string().optional().nullable(),
+  latitud: z.number().optional().nullable(),
+  longitud: z.number().optional().nullable(),
   telefono: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   esCliente: z.boolean().optional(),
@@ -52,7 +55,12 @@ const personSchema = z.object({
   salario: z.number().nonnegative().optional().nullable(),
 });
 
-// Listado con busqueda y filtro por rol
+const personsSortable = {
+  nombre: "razonSocial",
+  documento: "nroDoc",
+} as const;
+
+// Listado con busqueda y filtro por rol. Paginacion opt-in (ver lib/listQuery).
 personsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -71,13 +79,21 @@ personsRouter.get(
     if (role === "supplier") where.supplier = { is: { activo: true } };
     if (role === "employee") where.employee = { is: { activo: true } };
 
-    const persons = await prisma.person.findMany({
-      where,
-      include: personInclude,
-      orderBy: { razonSocial: "asc" },
-      take: 300,
+    const { skip, take, orderBy, page, pageSize } = parseListParams(req.query, {
+      sortable: personsSortable,
+      defaultSort: "nombre",
     });
-    res.json(persons.map(serialize));
+
+    if (!wantsPagination(req.query)) {
+      const persons = await prisma.person.findMany({ where, include: personInclude, orderBy, take: 300 });
+      return res.json(persons.map(serialize));
+    }
+
+    const [items, total] = await prisma.$transaction([
+      prisma.person.findMany({ where, include: personInclude, orderBy, skip, take }),
+      prisma.person.count({ where }),
+    ]);
+    res.json(paginated(items.map(serialize), total, page, pageSize));
   })
 );
 
@@ -105,6 +121,8 @@ personsRouter.post(
         razonSocial: d.razonSocial,
         nombreFantasia: d.nombreFantasia ?? null,
         direccion: d.direccion ?? null,
+        latitud: d.latitud ?? null,
+        longitud: d.longitud ?? null,
         telefono: d.telefono ?? null,
         email: d.email ?? null,
         customer: d.esCliente
@@ -137,6 +155,8 @@ personsRouter.put(
           razonSocial: d.razonSocial,
           nombreFantasia: d.nombreFantasia,
           direccion: d.direccion,
+          latitud: d.latitud,
+          longitud: d.longitud,
           telefono: d.telefono,
           email: d.email,
         },
@@ -190,11 +210,26 @@ export const customersRouter = Router();
 customersRouter.use(authRequired);
 customersRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string | undefined)?.trim();
     const customers = await prisma.customer.findMany({
-      where: { activo: true },
+      where: {
+        activo: true,
+        ...(q
+          ? {
+              person: {
+                OR: [
+                  { razonSocial: { contains: q, mode: "insensitive" } },
+                  { nroDoc: { contains: q, mode: "insensitive" } },
+                  { ruc: { contains: q, mode: "insensitive" } },
+                ],
+              },
+            }
+          : {}),
+      },
       include: { person: true },
       orderBy: { person: { razonSocial: "asc" } },
+      take: 50,
     });
     res.json(customers);
   })

@@ -12,3 +12,18 @@ export const IVA_LABEL: Record<string, string> = {
   IVA5: "5%",
   EXENTA: "Exenta",
 };
+
+export const TIPO_DOC_LABEL: Record<string, string> = {
+  FACTURA: "Factura",
+  NOTA_CREDITO: "Nota de credito",
+  NOTA_DEBITO: "Nota de debito",
+  REMISION: "Remision",
+};
+
+// Fecha corta (dd/mm/aaaa). Acepta ISO string o Date.
+export function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "-";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
+}

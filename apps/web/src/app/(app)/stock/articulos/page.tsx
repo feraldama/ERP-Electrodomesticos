@@ -1,14 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { Article, Brand, Category, Unit } from "@/lib/types";
-import { formatGs, IVA_LABEL } from "@/lib/format";
+import type { Article, Brand, Category, Rubro, Unit } from "@/lib/types";
+import { IVA_LABEL } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
+import { QuickCreateModal, type QuickKind } from "@/components/QuickCreateModal";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { ImageUpload } from "@/components/ui/ImageUpload";
+import { DataTable, type DataColumn } from "@/components/ui/DataTable";
+import { useListQuery } from "@/lib/useListQuery";
 import { Plus, Pencil } from "lucide-react";
 
 interface FormState {
@@ -17,12 +21,14 @@ interface FormState {
   brandId: string;
   categoryId: string;
   unitId: string;
+  rubroId: string;
   tipo: "PRODUCTO" | "SERVICIO";
   ivaTipo: "IVA10" | "IVA5" | "EXENTA";
   controlaSerie: boolean;
   costoActual: string;
   precioVenta: string;
   stockMinimo: string;
+  imagenUrl: string;
   activo: boolean;
 }
 
@@ -32,54 +38,87 @@ const EMPTY_FORM: FormState = {
   brandId: "",
   categoryId: "",
   unitId: "",
+  rubroId: "",
   tipo: "PRODUCTO",
   ivaTipo: "IVA10",
   controlaSerie: false,
   costoActual: "0",
   precioVenta: "0",
   stockMinimo: "0",
+  imagenUrl: "",
   activo: true,
 };
 
+const columns: DataColumn<Article>[] = [
+  {
+    key: "codigo",
+    header: "Codigo",
+    render: (a) => <span className="font-mono text-xs font-semibold text-secondary">{a.codigo}</span>,
+  },
+  { key: "descripcion", header: "Descripcion", render: (a) => <span className="text-foreground">{a.descripcion}</span> },
+  { key: "marca", header: "Marca", render: (a) => <span className="text-slate-600">{a.brand?.nombre ?? "-"}</span> },
+  { key: "categoria", header: "Categoria", render: (a) => <span className="text-slate-600">{a.category?.nombre ?? "-"}</span> },
+  { key: "rubro", header: "Rubro", render: (a) => <span className="text-slate-600">{a.rubro?.nombre ?? "-"}</span> },
+  { header: "IVA", align: "center", render: (a) => <span className="text-slate-600">{IVA_LABEL[a.ivaTipo]}</span> },
+  {
+    key: "estado",
+    header: "Estado",
+    align: "center",
+    render: (a) => (
+      <span
+        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+          a.activo ? "bg-accent/10 text-accent" : "bg-slate-100 text-slate-500"
+        }`}
+      >
+        {a.activo ? "Activo" : "Inactivo"}
+      </span>
+    ),
+  },
+];
+
 export default function ArticulosPage() {
   const { notify } = useToast();
-  const [articles, setArticles] = useState<Article[]>([]);
+  const list = useListQuery<Article>("/articles", { defaultSort: "descripcion" });
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [rubros, setRubros] = useState<Rubro[]>([]);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Article | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [addKind, setAddKind] = useState<QuickKind | null>(null);
 
-  const load = useCallback(async (search: string) => {
-    setLoading(true);
-    try {
-      const data = await api<Article[]>(`/articles${search ? `?q=${encodeURIComponent(search)}` : ""}`);
-      setArticles(data);
-    } catch {
-      setArticles([]);
-    } finally {
-      setLoading(false);
+  // Catalogo creado inline desde un "+": se agrega a la lista y se selecciona.
+  function handleCatalogCreated(item: { id: number } & Record<string, unknown>) {
+    switch (addKind) {
+      case "brand":
+        setBrands((p) => [...p, item as unknown as Brand]);
+        set("brandId", String(item.id));
+        break;
+      case "category":
+        setCategories((p) => [...p, item as unknown as Category]);
+        set("categoryId", String(item.id));
+        break;
+      case "rubro":
+        setRubros((p) => [...p, item as unknown as Rubro]);
+        set("rubroId", String(item.id));
+        break;
+      case "unit":
+        setUnits((p) => [...p, item as unknown as Unit]);
+        set("unitId", String(item.id));
+        break;
     }
-  }, []);
+  }
 
   useEffect(() => {
-    load("");
     api<Brand[]>("/brands").then(setBrands).catch(() => {});
     api<Category[]>("/categories").then(setCategories).catch(() => {});
     api<Unit[]>("/units").then(setUnits).catch(() => {});
-  }, [load]);
-
-  // Busqueda con debounce
-  useEffect(() => {
-    const t = setTimeout(() => load(q), 300);
-    return () => clearTimeout(t);
-  }, [q, load]);
+    api<Rubro[]>("/rubros").then(setRubros).catch(() => {});
+  }, []);
 
   function openNew() {
     setEditing(null);
@@ -96,12 +135,14 @@ export default function ArticulosPage() {
       brandId: a.brandId?.toString() ?? "",
       categoryId: a.categoryId?.toString() ?? "",
       unitId: a.unitId?.toString() ?? "",
+      rubroId: a.rubroId?.toString() ?? "",
       tipo: a.tipo,
       ivaTipo: a.ivaTipo,
       controlaSerie: a.controlaSerie,
       costoActual: a.costoActual,
       precioVenta: a.precioVenta,
       stockMinimo: a.stockMinimo,
+      imagenUrl: a.imagenUrl ?? "",
       activo: a.activo,
     });
     setErrors({});
@@ -127,12 +168,14 @@ export default function ArticulosPage() {
       brandId: form.brandId ? Number(form.brandId) : null,
       categoryId: form.categoryId ? Number(form.categoryId) : null,
       unitId: form.unitId ? Number(form.unitId) : null,
+      rubroId: form.rubroId ? Number(form.rubroId) : null,
       tipo: form.tipo,
       ivaTipo: form.ivaTipo,
       controlaSerie: form.controlaSerie,
       costoActual: Number(form.costoActual) || 0,
       precioVenta: Number(form.precioVenta) || 0,
       stockMinimo: Number(form.stockMinimo) || 0,
+      imagenUrl: form.imagenUrl || null,
       activo: form.activo,
     };
     try {
@@ -144,7 +187,7 @@ export default function ArticulosPage() {
         notify("success", "Articulo creado");
       }
       setOpen(false);
-      load(q);
+      list.reload();
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Error al guardar");
     } finally {
@@ -175,80 +218,42 @@ export default function ArticulosPage() {
 
       {/* Buscador */}
       <div className="mb-4 w-72">
-        <Input placeholder="Buscar por codigo o descripcion..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input
+          placeholder="Buscar por codigo o descripcion..."
+          value={list.q}
+          onChange={(e) => list.setQ(e.target.value)}
+        />
       </div>
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/60 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-3 font-medium">Codigo</th>
-              <th className="px-4 py-3 font-medium">Descripcion</th>
-              <th className="px-4 py-3 font-medium">Marca</th>
-              <th className="px-4 py-3 font-medium">Categoria</th>
-              <th className="px-4 py-3 text-center font-medium">IVA</th>
-              <th className="px-4 py-3 text-right font-medium">Costo</th>
-              <th className="px-4 py-3 text-right font-medium">Precio venta</th>
-              <th className="px-4 py-3 text-center font-medium">Estado</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-slate-400">
-                  Cargando...
-                </td>
-              </tr>
-            ) : articles.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-0">
-                  <EmptyState
-                    title={q ? "Sin resultados" : "No hay articulos todavia"}
-                    description={q ? "Proba con otro codigo o descripcion." : "Crea tu primer articulo para empezar a operar."}
-                    action={!q ? <Button onClick={openNew}>Nuevo articulo</Button> : undefined}
-                  />
-                </td>
-              </tr>
-            ) : (
-              articles.map((a) => (
-                <tr key={a.id} className="border-b border-border last:border-0 transition-colors hover:bg-muted/40">
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-secondary">{a.codigo}</td>
-                  <td className="px-4 py-3 text-foreground">{a.descripcion}</td>
-                  <td className="px-4 py-3 text-slate-600">{a.brand?.nombre ?? "-"}</td>
-                  <td className="px-4 py-3 text-slate-600">{a.category?.nombre ?? "-"}</td>
-                  <td className="px-4 py-3 text-center text-slate-600">{IVA_LABEL[a.ivaTipo]}</td>
-                  <td className="px-4 py-3 text-right font-mono text-slate-600">{formatGs(a.costoActual)}</td>
-                  <td className="px-4 py-3 text-right font-mono font-medium text-foreground">{formatGs(a.precioVenta)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        a.activo ? "bg-accent/10 text-accent" : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {a.activo ? "Activo" : "Inactivo"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => openEdit(a)}
-                      className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
-                      aria-label="Editar"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && articles.length > 0 && (
-        <p className="mt-3 text-xs text-slate-400">{articles.length} articulo(s)</p>
-      )}
+      <DataTable
+        columns={columns}
+        rows={list.rows}
+        loading={list.loading}
+        rowKey={(a) => a.id}
+        total={list.total}
+        page={list.page}
+        pageSize={list.pageSize}
+        sort={list.sort}
+        dir={list.dir}
+        onSort={list.toggleSort}
+        onPage={list.setPage}
+        onPageSize={list.setPageSize}
+        actions={(a) => (
+          <button
+            onClick={() => openEdit(a)}
+            className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary"
+            aria-label="Editar"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
+        emptyTitle={list.q ? "Sin resultados" : "No hay articulos todavia"}
+        emptyDescription={
+          list.q ? "Proba con otro codigo o descripcion." : "Crea tu primer articulo para empezar a operar."
+        }
+        emptyAction={!list.q ? <Button onClick={openNew}>Nuevo articulo</Button> : undefined}
+      />
 
       {/* Modal alta/edicion */}
       <Modal
@@ -283,35 +288,49 @@ export default function ArticulosPage() {
           </Field>
 
           <Field label="Marca" htmlFor="brand">
-            <Select id="brand" value={form.brandId} onChange={(e) => set("brandId", e.target.value)}>
+            <SelectWithAdd id="brand" value={form.brandId} onChange={(e) => set("brandId", e.target.value)} onAdd={() => setAddKind("brand")} addTitle="Crear marca">
               <option value="">-- Sin marca --</option>
               {brands.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.nombre}
                 </option>
               ))}
-            </Select>
+            </SelectWithAdd>
           </Field>
           <Field label="Categoria" htmlFor="category">
-            <Select id="category" value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)}>
+            <SelectWithAdd id="category" value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)} onAdd={() => setAddKind("category")} addTitle="Crear categoria">
               <option value="">-- Sin categoria --</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre}
                 </option>
               ))}
-            </Select>
+            </SelectWithAdd>
+          </Field>
+
+          <Field label="Rubro (facturacion)" htmlFor="rubro" className="sm:col-span-2">
+            <SelectWithAdd id="rubro" value={form.rubroId} onChange={(e) => set("rubroId", e.target.value)} onAdd={() => setAddKind("rubro")} addTitle="Crear rubro">
+              <option value="">-- Sin rubro --</option>
+              {rubros.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nombre}
+                </option>
+              ))}
+            </SelectWithAdd>
+            <p className="mt-1 text-xs text-slate-500">
+              Determina con que timbrado se factura el articulo (ej. Muebles, Electrodomesticos).
+            </p>
           </Field>
 
           <Field label="Unidad" htmlFor="unit">
-            <Select id="unit" value={form.unitId} onChange={(e) => set("unitId", e.target.value)}>
+            <SelectWithAdd id="unit" value={form.unitId} onChange={(e) => set("unitId", e.target.value)} onAdd={() => setAddKind("unit")} addTitle="Crear unidad">
               <option value="">-- Sin unidad --</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.codigo} - {u.nombre}
                 </option>
               ))}
-            </Select>
+            </SelectWithAdd>
           </Field>
           <Field label="IVA" htmlFor="iva">
             <Select id="iva" value={form.ivaTipo} onChange={(e) => set("ivaTipo", e.target.value as FormState["ivaTipo"])}>
@@ -321,11 +340,8 @@ export default function ArticulosPage() {
             </Select>
           </Field>
 
-          <Field label="Costo actual (Gs)" htmlFor="costo">
-            <Input id="costo" type="number" min={0} value={form.costoActual} onChange={(e) => set("costoActual", e.target.value)} />
-          </Field>
-          <Field label="Precio de venta (Gs)" htmlFor="precio" error={errors.precioVenta}>
-            <Input id="precio" type="number" min={0} value={form.precioVenta} onChange={(e) => set("precioVenta", e.target.value)} />
+          <Field label="Imagen del articulo" htmlFor="imagen" className="sm:col-span-2">
+            <ImageUpload value={form.imagenUrl || null} onChange={(url) => set("imagenUrl", url ?? "")} />
           </Field>
 
           <Field label="Stock minimo" htmlFor="stockmin">
@@ -357,6 +373,15 @@ export default function ArticulosPage() {
           )}
         </form>
       </Modal>
+
+      {addKind && (
+        <QuickCreateModal
+          kind={addKind}
+          open={addKind !== null}
+          onClose={() => setAddKind(null)}
+          onCreated={handleCatalogCreated}
+        />
+      )}
     </div>
   );
 }

@@ -38,6 +38,8 @@ model Company {
   branches      Branch[]
   userCompanies UserCompany[]
   warehouses    Warehouse[]
+  timbrados     Timbrado[]
+  puntosExpedicion PuntoExpedicion[]
 
   @@map("companies")
 }
@@ -186,6 +188,8 @@ model Person {
   razonSocial  String   // nombre o razon social
   nombreFantasia String?
   direccion    String?
+  latitud      Float?   // ubicacion en el mapa (OpenStreetMap)
+  longitud     Float?
   telefono     String?
   email        String?
   fechaNac     DateTime?
@@ -271,6 +275,68 @@ model Category {
   @@map("categories")
 }
 
+// Rubro de facturacion: agrupa articulos para emitir cada grupo con su
+// agrupa articulos por punto de expedicion al facturar.
+model Rubro {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @unique
+  activo   Boolean   @default(true)
+  articles Article[]
+  puntos   PuntoExpedicion[]
+
+  @@map("rubros")
+}
+
+// Timbrado de facturacion (autorizacion SET/DNIT), por empresa.
+// El timbrado es el mismo para todos los rubros; lo que cambia por rubro es el
+// punto de expedicion (ver PuntoExpedicion). Se permite mas de uno por empresa
+// para soportar renovaciones, pero normalmente hay uno activo.
+model Timbrado {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  numero          String   // nro de timbrado, ej "12345678"
+  establecimiento String   @default("001") // codigo de establecimiento SIFEN
+  fechaInicio     DateTime               // inicio de vigencia
+  fechaFin        DateTime?              // fin de vigencia
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company         Company  @relation(fields: [companyId], references: [id])
+  puntos          PuntoExpedicion[]
+
+  @@unique([companyId, numero])
+  @@index([companyId])
+  @@map("timbrados")
+}
+
+// Punto de expedicion por rubro (dentro de un timbrado). Cada rubro factura con
+// su propio punto, con numeracion independiente. El numero de factura se arma
+// como establecimiento-codigo-numero (ej. 001-002-0000123).
+model PuntoExpedicion {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  timbradoId    Int
+  rubroId       Int
+  codigo        String   // punto de expedicion, ej "001", "002"
+  tipoDocumento TipoDocElectronico @default(FACTURA)
+  numeroInicial Int      @default(1)   // primer numero autorizado
+  numeroFinal   Int?                   // ultimo numero autorizado (rango)
+  numeroActual  Int      @default(0)   // ultimo numero emitido
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  timbrado      Timbrado @relation(fields: [timbradoId], references: [id], onDelete: Cascade)
+  rubro         Rubro    @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, rubroId]) // un punto por rubro y empresa
+  @@unique([companyId, codigo])  // codigo de punto unico por empresa
+  @@index([companyId])
+  @@map("puntos_expedicion")
+}
+
 model UnitOfMeasure {
   id        Int       @id @default(autoincrement())
   codigo    String    @unique // UN, KG, MT, etc
@@ -287,6 +353,7 @@ model Article {
   brandId       Int?
   categoryId    Int?
   unitId        Int?
+  rubroId       Int?
   tipo          ArticleTipo @default(PRODUCTO)
   ivaTipo       IvaTipo  @default(IVA10)
   // controla numeros de serie / IMEI por unidad
@@ -294,6 +361,7 @@ model Article {
   costoActual   Decimal  @default(0) @db.Decimal(18, 4)
   precioVenta   Decimal  @default(0) @db.Decimal(18, 4)
   stockMinimo   Decimal  @default(0) @db.Decimal(18, 4)
+  imagenUrl     String?  // ruta relativa de la imagen, ej /uploads/articles/xxx.jpg
   activo        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -301,6 +369,7 @@ model Article {
   brand         Brand?    @relation(fields: [brandId], references: [id])
   category      Category? @relation(fields: [categoryId], references: [id])
   unit          UnitOfMeasure? @relation(fields: [unitId], references: [id])
+  rubro         Rubro?    @relation(fields: [rubroId], references: [id])
 
   barcodes      ArticleBarcode[]
   stocks        StockByWarehouse[]
@@ -309,6 +378,9 @@ model Article {
   serials       ArticleSerial[]
   purchaseItems PurchaseInvoiceItem[]
   salesItems    SalesInvoiceItem[]
+  creditNoteItems SalesCreditNoteItem[]
+  purchaseCreditNoteItems PurchaseCreditNoteItem[]
+  prices        ArticlePrice[]
 
   @@map("articles")
 }
@@ -481,20 +553,47 @@ model PurchaseInvoiceItem {
   @@map("purchase_invoice_items")
 }
 
+// Nota de credito de compra (recibida del proveedor). Puede devolver articulos
+// (egreso de stock, con detalle) o ser solo por monto (descuento/error).
 model PurchaseCreditNote {
   id            Int      @id @default(autoincrement())
   companyId     Int
   supplierId    Int
   invoiceId     Int?
-  nroComprobante String
+  warehouseId   Int?     // deposito desde donde sale el stock devuelto
+  nroComprobante String  // nro de la NC del proveedor (documento recibido)
   fecha         DateTime
   motivo        String?
+  conStock      Boolean  @default(false)
+  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
+  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
+  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
+  iva5          Decimal  @default(0) @db.Decimal(18, 4)
+  iva10         Decimal  @default(0) @db.Decimal(18, 4)
   total         Decimal  @db.Decimal(18, 4)
+  usuarioId     Int?
   createdAt     DateTime @default(now())
 
   invoice       PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
+  items         PurchaseCreditNoteItem[]
 
+  @@index([companyId, invoiceId])
   @@map("purchase_credit_notes")
+}
+
+model PurchaseCreditNoteItem {
+  id           Int      @id @default(autoincrement())
+  creditNoteId Int
+  articleId    Int
+  cantidad     Decimal  @db.Decimal(18, 4)
+  costoUnitario Decimal @db.Decimal(18, 4)
+  ivaTipo      IvaTipo  @default(IVA10)
+  total        Decimal  @db.Decimal(18, 4)
+
+  creditNote   PurchaseCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  article      Article  @relation(fields: [articleId], references: [id])
+
+  @@map("purchase_credit_note_items")
 }
 
 model PurchaseReturn {
@@ -526,11 +625,50 @@ enum DocEstado {
 // MODULO 3: VENTAS (con SIFEN / facturacion electronica Paraguay)
 // =====================================================================
 
+// Lista de precios: define la condicion de venta y, si es a credito, en cuantas
+// cuotas se financia. Compartida entre empresas (igual que el catalogo de
+// articulos). Ej: Contado, Credito 6, Credito 10, Credito 12.
+model PriceList {
+  id        Int           @id @default(autoincrement())
+  codigo    String        @unique // CONTADO, CRED6, CRED10, CRED12
+  nombre    String
+  condicion CondicionPago @default(CONTADO)
+  cuotas    Int           @default(0) // 0 = contado; 6/10/12 = nro de cuotas
+  orden     Int           @default(0)
+  esDefault Boolean       @default(false) // lista sugerida al vender
+  activo    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  prices    ArticlePrice[]
+  invoices  SalesInvoice[]
+
+  @@map("price_lists")
+}
+
+// Precio de un articulo en una lista (con IVA incluido). Es lo que se carga en
+// la pantalla "precios por articulo y lista".
+model ArticlePrice {
+  id          Int      @id @default(autoincrement())
+  articleId   Int
+  priceListId Int
+  precio      Decimal  @default(0) @db.Decimal(18, 4) // IVA incluido
+  updatedAt   DateTime @updatedAt
+
+  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, priceListId])
+  @@index([priceListId])
+  @@map("article_prices")
+}
+
 model SalesInvoice {
   id              Int      @id @default(autoincrement())
   companyId       Int
   branchId        Int?
   customerId      Int
+  priceListId     Int?     // lista de precios usada al vender
   // numeracion SIFEN: establecimiento-puntoExpedicion-numero
   establecimiento String   @default("001")
   puntoExpedicion String   @default("001")
@@ -550,13 +688,16 @@ model SalesInvoice {
   iva5            Decimal  @default(0) @db.Decimal(18, 4)
   iva10           Decimal  @default(0) @db.Decimal(18, 4)
   total           Decimal  @default(0) @db.Decimal(18, 4)
+  entregaInicial  Decimal  @default(0) @db.Decimal(18, 4) // monto pagado al momento (contado=total, credito=anticipo)
   estado          DocEstado @default(CONFIRMADO)
   observacion     String?
   createdAt       DateTime @default(now())
   usuarioId       Int?
 
   customer        Customer @relation(fields: [customerId], references: [id])
+  priceList       PriceList? @relation(fields: [priceListId], references: [id])
   items           SalesInvoiceItem[]
+  payments        SalesPayment[]
   creditNotes     SalesCreditNote[]
   returns         SalesReturn[]
   promissoryNotes PromissoryNote[]
@@ -583,21 +724,71 @@ model SalesInvoiceItem {
   @@map("sales_invoice_items")
 }
 
+// Desglose de las formas de pago de una venta (lo cobrado al momento: en contado
+// es el total; en credito es la entrega inicial). No mueve caja todavia.
+model SalesPayment {
+  id        Int        @id @default(autoincrement())
+  companyId Int
+  invoiceId Int
+  medio     MedioPago
+  monto     Decimal    @db.Decimal(18, 4)
+  createdAt DateTime   @default(now())
+
+  invoice   SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, invoiceId])
+  @@map("sales_payments")
+}
+
+enum MedioPago {
+  EFECTIVO
+  TARJETA_DEBITO
+  TARJETA_CREDITO
+  TRANSFERENCIA
+}
+
+// Nota de credito de venta. Puede devolver articulos (reingresa stock, con
+// detalle de items) o ser solo por monto (descuento/error, sin stock).
 model SalesCreditNote {
   id            Int      @id @default(autoincrement())
   companyId     Int
   invoiceId     Int?
+  warehouseId   Int?     // deposito donde reingresa el stock devuelto
   numero        String
   cdc           String?  @unique
   estadoSifen   SifenEstado @default(PENDIENTE)
   fecha         DateTime
   motivo        String?
+  conStock      Boolean  @default(false) // true si devolvio articulos (reingreso stock)
+  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
+  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
+  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
+  iva5          Decimal  @default(0) @db.Decimal(18, 4)
+  iva10         Decimal  @default(0) @db.Decimal(18, 4)
   total         Decimal  @db.Decimal(18, 4)
+  usuarioId     Int?
   createdAt     DateTime @default(now())
 
   invoice       SalesInvoice? @relation(fields: [invoiceId], references: [id])
+  items         SalesCreditNoteItem[]
 
+  @@index([companyId, invoiceId])
   @@map("sales_credit_notes")
+}
+
+model SalesCreditNoteItem {
+  id           Int      @id @default(autoincrement())
+  creditNoteId Int
+  articleId    Int
+  cantidad     Decimal  @db.Decimal(18, 4)
+  precioUnitario Decimal @db.Decimal(18, 4)
+  ivaTipo      IvaTipo  @default(IVA10)
+  total        Decimal  @db.Decimal(18, 4)
+
+  creditNote   SalesCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  article      Article  @relation(fields: [articleId], references: [id])
+
+  @@map("sales_credit_note_items")
 }
 
 model SalesReturn {

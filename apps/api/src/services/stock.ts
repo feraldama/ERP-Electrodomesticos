@@ -61,3 +61,57 @@ export async function applyStockMovement(
     },
   });
 }
+
+export interface TransferInput {
+  companyId: number;
+  articleId: number;
+  fromWarehouseId: number;
+  toWarehouseId: number;
+  cantidad: number; // positivo
+  observacion?: string | null;
+  usuarioId?: number | null;
+}
+
+/**
+ * Transfiere stock de un deposito a otro dentro de una transaccion:
+ *  - valida que haya stock suficiente en el origen,
+ *  - descuenta del origen e ingresa al destino (StockByWarehouse),
+ *  - registra un unico movimiento TRANSFERENCIA (warehouseId origen + warehouseDestId destino).
+ */
+export async function applyTransfer(tx: Prisma.TransactionClient, input: TransferInput) {
+  const { companyId, articleId, fromWarehouseId, toWarehouseId, cantidad } = input;
+  if (fromWarehouseId === toWarehouseId) throw new Error("El deposito de origen y destino deben ser distintos");
+  if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a cero");
+
+  const origen = await tx.stockByWarehouse.findUnique({
+    where: { articleId_warehouseId: { articleId, warehouseId: fromWarehouseId } },
+  });
+  const disponible = origen ? Number(origen.cantidad) : 0;
+  if (disponible < cantidad) {
+    throw new Error(`Stock insuficiente en el deposito de origen (disponible ${disponible})`);
+  }
+
+  await tx.stockByWarehouse.update({
+    where: { articleId_warehouseId: { articleId, warehouseId: fromWarehouseId } },
+    data: { cantidad: { decrement: cantidad } },
+  });
+  await tx.stockByWarehouse.upsert({
+    where: { articleId_warehouseId: { articleId, warehouseId: toWarehouseId } },
+    create: { articleId, warehouseId: toWarehouseId, cantidad },
+    update: { cantidad: { increment: cantidad } },
+  });
+
+  await tx.stockMovement.create({
+    data: {
+      companyId,
+      articleId,
+      warehouseId: fromWarehouseId,
+      warehouseDestId: toWarehouseId,
+      tipo: "TRANSFERENCIA",
+      cantidad,
+      origenTipo: "TRANSFERENCIA",
+      observacion: input.observacion ?? null,
+      usuarioId: input.usuarioId ?? null,
+    },
+  });
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -16,11 +17,27 @@ interface ModalProps {
 // Modal sobre Radix Dialog: foco atrapado, cierre con Escape/overlay y accesibilidad.
 export function Modal({ open, onClose, title, children, footer, size = "md" }: ModalProps) {
   const maxW = size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Al abrir, enfoca el primer campo del form (no el boton de cerrar, que Radix toma por defecto)
+  // para poder empezar a cargar sin tener que clickear con el mouse.
+  function focusFirstField(e: Event) {
+    const first = contentRef.current?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+    );
+    if (first) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-fade-in" />
         <Dialog.Content
+          ref={contentRef}
+          onOpenAutoFocus={focusFirstField}
           aria-describedby={undefined}
           className={cn(
             "fixed left-1/2 top-[8%] z-50 w-[95vw] -translate-x-1/2 rounded-2xl bg-white shadow-xl animate-zoom-in",

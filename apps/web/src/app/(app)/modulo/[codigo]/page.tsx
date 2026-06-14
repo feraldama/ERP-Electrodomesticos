@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { Module, ProgramCategoria } from "@/lib/types";
 import { Input } from "@/components/ui/Field";
 import { SlidersHorizontal, ArrowLeftRight, Search, List, Cog, type LucideIcon } from "lucide-react";
@@ -27,6 +28,7 @@ const CATEGORIAS: Array<{ key: "TODOS" | ProgramCategoria; label: string }> = [
 
 export default function ModulePage() {
   const params = useParams<{ codigo: string }>();
+  const { user } = useAuth();
   const codigo = params.codigo?.toUpperCase();
   const [mod, setMod] = useState<Module | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,15 +46,18 @@ export default function ModulePage() {
 
   const programs = useMemo(() => {
     if (!mod) return [];
+    const isSuper = user?.isSuperadmin;
+    const permisos = user?.permisos ?? [];
     return mod.programs.filter((p) => {
+      const okPerm = isSuper || permisos.includes(p.codigo);
       const okCat = filtro === "TODOS" || p.categoria === filtro;
       const okQ =
         !q ||
         p.nombre.toLowerCase().includes(q.toLowerCase()) ||
         p.codigo.toLowerCase().includes(q.toLowerCase());
-      return okCat && okQ;
+      return okPerm && okCat && okQ;
     });
-  }, [mod, filtro, q]);
+  }, [mod, filtro, q, user]);
 
   if (loading) return <p className="text-slate-400">Cargando...</p>;
   if (!mod) return <p className="text-slate-500">Modulo no encontrado.</p>;

@@ -27,6 +27,7 @@ const MODULES: Array<{
       { codigo: "STKM001", nombre: "Administrar articulos", categoria: "MANTENIMIENTOS", ruta: "/stock/articulos" },
       { codigo: "STKM002", nombre: "Marcas", categoria: "MANTENIMIENTOS", ruta: "/stock/marcas" },
       { codigo: "STKM003", nombre: "Categorias", categoria: "MANTENIMIENTOS", ruta: "/stock/categorias" },
+      { codigo: "STKM012", nombre: "Rubros", categoria: "MANTENIMIENTOS", ruta: "/stock/rubros" },
       { codigo: "STKM004", nombre: "Depositos", categoria: "MANTENIMIENTOS", ruta: "/stock/depositos" },
       { codigo: "STKI005", nombre: "Movimiento entre depositos", categoria: "MOVIMIENTOS", ruta: "/stock/movimientos" },
       { codigo: "STKI006", nombre: "Ajuste manual de inventario", categoria: "MOVIMIENTOS", ruta: "/stock/ajustes" },
@@ -45,8 +46,7 @@ const MODULES: Array<{
     orden: 2,
     programs: [
       { codigo: "COMI001", nombre: "Cargar compra", categoria: "MOVIMIENTOS", ruta: "/compras/nueva" },
-      { codigo: "COMI002", nombre: "Nota de credito recibida", categoria: "MOVIMIENTOS", ruta: "/compras/notas-credito" },
-      { codigo: "COMI003", nombre: "Devolucion de compra", categoria: "MOVIMIENTOS", ruta: "/compras/devoluciones" },
+      { codigo: "COMI002", nombre: "Nota de credito / devolucion", categoria: "MOVIMIENTOS", ruta: "/compras/notas-credito" },
       { codigo: "COMC004", nombre: "Cuenta corriente proveedor", categoria: "CONSULTAS", ruta: "/compras/cuenta-proveedor" },
       { codigo: "COML005", nombre: "Listado de compras", categoria: "LISTADOS", ruta: "/compras/listado" },
       { codigo: "COML006", nombre: "Ultimo costo por proveedor", categoria: "LISTADOS", ruta: "/compras/ultimos-costos" },
@@ -59,13 +59,15 @@ const MODULES: Array<{
     color: "#c0392b",
     orden: 3,
     programs: [
-      { codigo: "VENI001", nombre: "Facturacion contado", categoria: "MOVIMIENTOS", ruta: "/ventas/contado" },
-      { codigo: "VENI002", nombre: "Facturacion credito", categoria: "MOVIMIENTOS", ruta: "/ventas/credito" },
+      { codigo: "VENI001", nombre: "Nueva venta", categoria: "MOVIMIENTOS", ruta: "/ventas/nueva" },
       { codigo: "VENI003", nombre: "Presupuesto", categoria: "MOVIMIENTOS", ruta: "/ventas/presupuesto" },
-      { codigo: "VENI004", nombre: "Nota de credito emitida", categoria: "MOVIMIENTOS", ruta: "/ventas/notas-credito" },
-      { codigo: "VENI005", nombre: "Devolucion de venta", categoria: "MOVIMIENTOS", ruta: "/ventas/devoluciones" },
+      { codigo: "VENI004", nombre: "Nota de credito / devolucion", categoria: "MOVIMIENTOS", ruta: "/ventas/notas-credito" },
       { codigo: "VENC006", nombre: "Estado de cuenta cliente", categoria: "CONSULTAS", ruta: "/ventas/cuenta-cliente" },
       { codigo: "VENL007", nombre: "Listado de ventas", categoria: "LISTADOS", ruta: "/ventas/listado" },
+      { codigo: "VENM008", nombre: "Timbrados", categoria: "MANTENIMIENTOS", ruta: "/ventas/timbrados" },
+      { codigo: "VENM009", nombre: "Puntos de expedicion por rubro", categoria: "MANTENIMIENTOS", ruta: "/ventas/puntos-expedicion" },
+      { codigo: "VENM010", nombre: "Listas de precios", categoria: "MANTENIMIENTOS", ruta: "/ventas/listas-precios" },
+      { codigo: "VENM011", nombre: "Precios por articulo", categoria: "MANTENIMIENTOS", ruta: "/ventas/precios" },
     ],
   },
   {
@@ -95,6 +97,17 @@ const MODULES: Array<{
       { codigo: "CONM001", nombre: "Plan de cuentas", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/plan-cuentas" },
       { codigo: "CONC002", nombre: "Libro diario", categoria: "CONSULTAS", ruta: "/contabilidad/libro-diario" },
       { codigo: "CONP003", nombre: "Procesar eventos contables", categoria: "PROCESOS", ruta: "/contabilidad/procesar" },
+    ],
+  },
+  {
+    codigo: "ADM",
+    nombre: "Administracion",
+    icono: "shield",
+    color: "#c0392b",
+    orden: 6,
+    programs: [
+      { codigo: "ADMM001", nombre: "Roles y permisos", categoria: "MANTENIMIENTOS", ruta: "/admin/roles" },
+      { codigo: "ADMM002", nombre: "Usuarios", categoria: "MANTENIMIENTOS", ruta: "/admin/usuarios" },
     ],
   },
 ];
@@ -147,6 +160,9 @@ async function main() {
   });
 
   // 4) Modulos y programas
+  // La facturacion contado/credito se unifico en /ventas/nueva: removemos el
+  // programa obsoleto si quedo de un seed anterior.
+  await prisma.program.deleteMany({ where: { codigo: { in: ["VENI002", "VENI005", "COMI003"] } } });
   for (const m of MODULES) {
     const mod = await prisma.module.upsert({
       where: { codigo: m.codigo },
@@ -171,6 +187,17 @@ async function main() {
     }
   }
 
+  // 4b) Permisos: uno por programa (clave = codigo de programa). El admin es
+  // superadmin y no necesita permisos asignados.
+  const allPrograms = await prisma.program.findMany({ select: { codigo: true, nombre: true } });
+  for (const p of allPrograms) {
+    await prisma.permission.upsert({
+      where: { clave: p.codigo },
+      update: { descripcion: p.nombre },
+      create: { clave: p.codigo, descripcion: p.nombre },
+    });
+  }
+
   // 5) Catalogos basicos
   const units = [
     { codigo: "UN", nombre: "Unidad" },
@@ -181,6 +208,47 @@ async function main() {
     await prisma.unitOfMeasure.upsert({ where: { codigo: u.codigo }, update: {}, create: u });
   }
 
+  const rubroElectro = await prisma.rubro.upsert({
+    where: { nombre: "Electrodomesticos" },
+    update: {},
+    create: { nombre: "Electrodomesticos" },
+  });
+  const rubroMuebles = await prisma.rubro.upsert({
+    where: { nombre: "Muebles" },
+    update: {},
+    create: { nombre: "Muebles" },
+  });
+
+  // Timbrado demo (compartido) + un punto de expedicion por rubro.
+  const timbrado = await prisma.timbrado.upsert({
+    where: { companyId_numero: { companyId: company.id, numero: "12345678" } },
+    update: {},
+    create: {
+      companyId: company.id,
+      numero: "12345678",
+      establecimiento: "001",
+      fechaInicio: new Date("2026-01-01"),
+    },
+  });
+  const puntos = [
+    { rubroId: rubroElectro.id, codigo: "001" },
+    { rubroId: rubroMuebles.id, codigo: "002" },
+  ];
+  for (const p of puntos) {
+    await prisma.puntoExpedicion.upsert({
+      where: { companyId_rubroId: { companyId: company.id, rubroId: p.rubroId } },
+      update: { timbradoId: timbrado.id, codigo: p.codigo },
+      create: {
+        companyId: company.id,
+        timbradoId: timbrado.id,
+        rubroId: p.rubroId,
+        codigo: p.codigo,
+        tipoDocumento: "FACTURA",
+        numeroInicial: 1,
+      },
+    });
+  }
+
   const methods = [
     { codigo: "EFECTIVO", nombre: "Efectivo" },
     { codigo: "CHEQUE", nombre: "Cheque" },
@@ -189,6 +257,28 @@ async function main() {
   ];
   for (const pm of methods) {
     await prisma.paymentMethod.upsert({ where: { codigo: pm.codigo }, update: {}, create: pm });
+  }
+
+  // Listas de precios: contado + planes de credito (6/10/12 cuotas).
+  const priceLists: Array<{
+    codigo: string;
+    nombre: string;
+    condicion: "CONTADO" | "CREDITO";
+    cuotas: number;
+    orden: number;
+    esDefault: boolean;
+  }> = [
+    { codigo: "CONTADO", nombre: "Contado", condicion: "CONTADO", cuotas: 0, orden: 1, esDefault: true },
+    { codigo: "CRED6", nombre: "Credito 6 cuotas", condicion: "CREDITO", cuotas: 6, orden: 2, esDefault: false },
+    { codigo: "CRED10", nombre: "Credito 10 cuotas", condicion: "CREDITO", cuotas: 10, orden: 3, esDefault: false },
+    { codigo: "CRED12", nombre: "Credito 12 cuotas", condicion: "CREDITO", cuotas: 12, orden: 4, esDefault: false },
+  ];
+  for (const pl of priceLists) {
+    await prisma.priceList.upsert({
+      where: { codigo: pl.codigo },
+      update: { nombre: pl.nombre, condicion: pl.condicion, cuotas: pl.cuotas, orden: pl.orden },
+      create: pl,
+    });
   }
 
   console.log("Seed completo.");

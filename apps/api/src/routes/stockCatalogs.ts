@@ -3,14 +3,25 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
+import { listOrPaginate } from "../lib/listQuery.js";
 
 // Categorias
 export const categoriesRouter = Router();
 categoriesRouter.use(authRequired);
 categoriesRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    res.json(await prisma.category.findMany({ orderBy: { nombre: "asc" } }));
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string | undefined)?.trim();
+    const where = q ? { nombre: { contains: q, mode: "insensitive" as const } } : {};
+    res.json(
+      await listOrPaginate(
+        req.query,
+        { sortable: { nombre: "nombre" }, defaultSort: "nombre" },
+        ({ orderBy, skip, take }) => prisma.category.findMany({ where, orderBy, skip, take }),
+        () => prisma.category.count({ where }),
+        300
+      )
+    );
   })
 );
 categoriesRouter.post(
@@ -35,8 +46,25 @@ export const unitsRouter = Router();
 unitsRouter.use(authRequired);
 unitsRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    res.json(await prisma.unitOfMeasure.findMany({ orderBy: { codigo: "asc" } }));
+  asyncHandler(async (req, res) => {
+    const q = (req.query.q as string | undefined)?.trim();
+    const where = q
+      ? {
+          OR: [
+            { codigo: { contains: q, mode: "insensitive" as const } },
+            { nombre: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    res.json(
+      await listOrPaginate(
+        req.query,
+        { sortable: { codigo: "codigo", nombre: "nombre" }, defaultSort: "codigo" },
+        ({ orderBy, skip, take }) => prisma.unitOfMeasure.findMany({ where, orderBy, skip, take }),
+        () => prisma.unitOfMeasure.count({ where }),
+        300
+      )
+    );
   })
 );
 unitsRouter.post(
