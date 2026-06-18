@@ -5,19 +5,21 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import type { TrialBalance } from "@/lib/types";
+import { PeriodFilter, rangeQuery, type Range } from "../_components/PeriodFilter";
 
 export default function BalanceSumasSaldosPage() {
   const { companyId } = useAuth();
   const [data, setData] = useState<TrialBalance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<Range>({ desde: "", hasta: "" });
 
   useEffect(() => {
     setLoading(true);
-    api<TrialBalance>("/contabilidad/balance")
+    api<TrialBalance>(`/contabilidad/balance${rangeQuery(range)}`)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [companyId]);
+  }, [companyId, range]);
 
   const t = data?.totales;
   const balanceaSumas = t ? Math.round(t.debe) === Math.round(t.haber) : false;
@@ -32,6 +34,8 @@ export default function BalanceSumasSaldosPage() {
         </div>
         <p className="text-sm text-slate-500">Sumas (debe/haber) y saldos por cuenta. Las columnas deben cuadrar.</p>
       </div>
+
+      <PeriodFilter onApply={setRange} />
 
       {loading ? (
         <p className="text-slate-400">Cargando...</p>

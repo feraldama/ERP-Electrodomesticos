@@ -19,10 +19,18 @@ if (isProd && (WEAK_JWT_SECRETS.has(jwtSecret) || jwtSecret.length < 16)) {
   throw new Error("JWT_SECRET es obligatorio y debe ser robusto (>=16 caracteres) en produccion");
 }
 
+// WEB_ORIGIN admite varios origenes separados por coma. Lo parseamos a un
+// array porque el paquete `cors` compara el Origin de la request de forma exacta
+// contra cada elemento; un unico string con comas nunca coincidiria.
+const webOrigin = (process.env.WEB_ORIGIN ?? "http://localhost:3000")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   databaseUrl: required("DATABASE_URL"),
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
-  webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+  webOrigin,
 };

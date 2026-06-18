@@ -500,6 +500,46 @@ export interface BalanceSheet {
   totalPasivoPatrimonio: number;
 }
 
+// Ejercicio / periodo fiscal (CONM011)
+export interface FiscalPeriod {
+  id: number;
+  nombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+  cerrado: boolean;
+  asientos: number;
+}
+
+// Configuracion de cuentas operativas (CONM010)
+export interface AccountingConfigRow {
+  clave: string;
+  accountId: number | null;
+  codigo: string | null;
+  nombre: string | null;
+}
+
+// Libro IVA Compras / Ventas (CONC008 / CONC009)
+export interface LibroIvaRow {
+  fecha: string;
+  tipoDoc: "FACTURA" | "NOTA_CREDITO";
+  comprobante: string;
+  timbrado: string;
+  condicion: "CONTADO" | "CREDITO" | null;
+  ruc: string;
+  razonSocial: string;
+  gravada10: number;
+  gravada5: number;
+  exenta: number;
+  iva10: number;
+  iva5: number;
+  total: number;
+}
+
+export interface LibroIva {
+  filas: LibroIvaRow[];
+  totales: { gravada10: number; gravada5: number; exenta: number; iva10: number; iva5: number; total: number };
+}
+
 // Estado de cuenta del proveedor (saldo a pagar = haber - debe)
 export interface SupplierAccount {
   supplier: { id: number; razonSocial: string; documento: string | null };

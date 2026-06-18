@@ -5,19 +5,21 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import type { BalanceSheet, StatementRow } from "@/lib/types";
+import { PeriodFilter, rangeQuery, type Range } from "../_components/PeriodFilter";
 
 export default function BalanceGeneralPage() {
   const { companyId } = useAuth();
   const [data, setData] = useState<BalanceSheet | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<Range>({ desde: "", hasta: "" });
 
   useEffect(() => {
     setLoading(true);
-    api<BalanceSheet>("/contabilidad/balance-general")
+    api<BalanceSheet>(`/contabilidad/balance-general${rangeQuery(range)}`)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [companyId]);
+  }, [companyId, range]);
 
   const cuadra = data ? Math.round(data.totalActivo) === Math.round(data.totalPasivoPatrimonio) : false;
   const resultadoPositivo = (data?.resultado ?? 0) >= 0;
@@ -31,6 +33,8 @@ export default function BalanceGeneralPage() {
         </div>
         <p className="text-sm text-slate-500">Activo = Pasivo + Patrimonio + Resultado del ejercicio.</p>
       </div>
+
+      <PeriodFilter onApply={setRange} />
 
       {loading ? (
         <p className="text-slate-400">Cargando...</p>

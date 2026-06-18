@@ -334,6 +334,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
         origenId: invoice.id,
         payload: {
           nroComprobante,
+          fecha: input.fecha,
           condicion: priceList.condicion,
           subtotalExenta: g.subtotalExenta,
           subtotal5: g.subtotal5,

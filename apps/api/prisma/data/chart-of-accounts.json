@@ -1,0 +1,1688 @@
+[
+  {
+    "codigo": "1-00-00-00-00-00",
+    "nombre": "ACTIVO",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-00-00-00-00",
+    "nombre": "ACTIVO CORRIENTE",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-01-00-00-00",
+    "nombre": "DISPONIBILIDADES",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-01-01-00-00",
+    "nombre": "RECAUDACIONES A DEPOSITAR",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-01-01-01-00",
+    "nombre": "RECAUDACIONES A DEPOSITAR",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-01-02-00-00",
+    "nombre": "CAJA",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-01-02-01-00",
+    "nombre": "CAJA GUARANÍES",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-01-02-02-00",
+    "nombre": "CAJA - OTROS",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-01-02-03-00",
+    "nombre": "CAJA-MONEDA EXTRANJERA",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-01-03-00-00",
+    "nombre": "FONDOS FIJOS",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-01-04-00-00",
+    "nombre": "BANCOS",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-02-00-00-00",
+    "nombre": "INVERSIONES TEMPORARIAS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-02-01-00-00",
+    "nombre": "INVERSIONES FINANCIERAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-02-02-00-00",
+    "nombre": "INVERSIONES EN ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-02-03-00-00",
+    "nombre": "OTRAS INVERSIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-02-04-00-00",
+    "nombre": "INTERESES, REGALIAS Y OTROS RENDIMIENTOS DE INVERSIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-00-00-00",
+    "nombre": "CREDITOS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-01-00-00",
+    "nombre": "DEUDORES POR VENTAS",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-01-01-00",
+    "nombre": "CLIENTES",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-01-02-00",
+    "nombre": "TARJETAS DE CREDITO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-01-03-00",
+    "nombre": "TARJETA DE DEBITO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-02-00-00",
+    "nombre": "DEUDORES POR PRÉSTAMOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-03-00-00",
+    "nombre": "CUENTAS A COBRAR A DIRECTORES Y FUNCIONARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-04-00-00",
+    "nombre": "CUENTAS A COBRAR A SOCIOS O A ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-00-00",
+    "nombre": "CRÉDITOS POR IMPUESTOS CORRIENTES",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-05-01-00",
+    "nombre": "ANTICIPOS Y RETENCIONES DE IMPUESTO A LA RENTA",
+    "nivel": 5,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-05-01-01",
+    "nombre": "ANTICIPOS DE IMPUESTO A LA RENTA",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-01-02",
+    "nombre": "RETENCIONES DE IMPUESTO A LA RENTA",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-02-00",
+    "nombre": "RETENCIÓN DE IVA CRÉDITO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-03-00",
+    "nombre": "IVA - CRÉDITO FISCAL",
+    "nivel": 5,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-05-03-01",
+    "nombre": "IVA CRÉDITO 10%",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-03-02",
+    "nombre": "IVA CRÉDITO 05%",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-05-04-00",
+    "nombre": "IVA CREDITO FISCAL REGIMEN DE TURISMO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-06-00-00",
+    "nombre": "ANTICIPO A PROVEEDORES",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-03-06-01-00",
+    "nombre": "ANTICIPOS A PROVEEDORES LOCALES",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-06-02-00",
+    "nombre": "ANTICIPOS A PROVEEDORES DEL EXTERIOR",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-03-99-00-00",
+    "nombre": "(-) PREVISIÓN PARA CRÉDITOS DE DUDOSO COBRO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-00-00-00",
+    "nombre": "INVENTARIOS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-04-01-00-00",
+    "nombre": "MERCADERÍAS",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-04-01-01-00",
+    "nombre": "MERCADERÍAS GRAVADAS POR EL IVA AL 10%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-01-02-00",
+    "nombre": "MERCADERÍAS GRAVADAS POR EL IVA AL 5%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-01-03-00",
+    "nombre": "MERCADERÍAS EXENTAS DEL IVA",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-02-00-00",
+    "nombre": "MERCADERIAS REGIMENES ESPECIALES",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-04-02-01-00",
+    "nombre": "MERCADERIAS REGIMEN DE TURISMO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-02-02-00",
+    "nombre": "MERCADERÍAS ZONA FRANCA",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-02-03-00",
+    "nombre": "MERCADERÍAS REGIMEN DE MAQUILA",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-02-04-00",
+    "nombre": "MERCADERÍAS OTROS REGIMENES ESPECIALES",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-03-00-00",
+    "nombre": "PRODUCTOS TERMINADOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-03-01-00",
+    "nombre": "PRODUCTOS TERMINADOS GRAVADOS POR EL IVA AL 10%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-03-02-00",
+    "nombre": "PRODUCTOS TERMINADOS GRAVADOS POR EL IVA AL 5%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-03-03-00",
+    "nombre": "PRODUCTOS TERMINADOS EXENTOS DEL IVA",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-04-00-00",
+    "nombre": "PRODUCTOS EN PROCESO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-05-00-00",
+    "nombre": "MATERIAS PRIMAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-06-00-00",
+    "nombre": "MATERIALES, SUMINISTROS Y REPUESTOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-07-00-00",
+    "nombre": "PRODUCTOS AGRICOLAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-08-00-00",
+    "nombre": "PRODUCTOS FORESTALES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-09-00-00",
+    "nombre": "ACTIVOS BIOLÓGICOS EN PRODUCCION",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-10-00-00",
+    "nombre": "ACTIVOS BIOLOGICOS EN DESARROLLO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-11-00-00",
+    "nombre": "IMPORTACIONES EN CURSO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-04-99-00-00",
+    "nombre": "(-)PREVISIÓN POR DEVALUACIÓN DE INVENTARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-05-00-00-00",
+    "nombre": "GASTOS PAGADOS POR ADELANTADO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-01-05-01-00-00",
+    "nombre": "ALQUILERES PAGADOS POR ADELANTADO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-05-02-00-00",
+    "nombre": "SEGUROS A DEVENGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-05-03-00-00",
+    "nombre": "OTROS GASTOS A DEVENGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-01-06-00-00-00",
+    "nombre": "OTROS ACTIVOS",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-00-00-00-00",
+    "nombre": "ACTIVO NO CORRIENTE",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-01-00-00-00",
+    "nombre": "CRÉDITOS A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-01-01-00-00",
+    "nombre": "DEUDORES POR VENTAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-02-00-00",
+    "nombre": "DEUDORES POR PRÉSTAMOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-03-00-00",
+    "nombre": "CUENTAS A COBRAR A DIRECTORES Y FUNCIONARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-04-00-00",
+    "nombre": "CUENTAS A COBRAR A SOCIOS O ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-05-00-00",
+    "nombre": "DEUDORES EN GESTIÓN DE COBRO ¿ MOROSOS O SIMILARES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-06-00-00",
+    "nombre": "ANTICIPOS A PROVEEDORES",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-01-06-01-00",
+    "nombre": "ANTICIPOS A PROVEEDORES LOCALES",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-06-02-00",
+    "nombre": "ANTICIPOS A PROVEEDORES DEL EXTERIOR",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-07-00-00",
+    "nombre": "CRÉDITOS POR IMPUESTOS DIFERIDOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-01-99-00-00",
+    "nombre": "(-) PREVISIÓN PARA CRÉDITOS DE DUDOSO COBRO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-02-00-00-00",
+    "nombre": "INVENTARIOS A REALIZAR A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-02-01-00-00",
+    "nombre": "ACTIVOS BIOLÓGICOS EN PRODUCCION",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-02-02-00-00",
+    "nombre": "ACTIVOS BIOLÓGICOS EN DESARROLLO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-02-99-00-00",
+    "nombre": "(-) PREVISIÓN POR DEVALUACIÓN DE ACTIVOS BIOLÓGICOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-00-00-00",
+    "nombre": "INVERSIONES A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-03-01-00-00",
+    "nombre": "INVERSIONES FINANCIERAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-02-00-00",
+    "nombre": "INVERSIONES EN ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-03-00-00",
+    "nombre": "INVERSIONES INMOBILIARIAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-04-00-00",
+    "nombre": "OTRAS INVERSIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-05-00-00",
+    "nombre": "INTERESES, REGALÍAS Y OTROS RENDIMIENTOS DE INVERSIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-03-99-00-00",
+    "nombre": "(-) PREVISIÓN POR DEVALUACIÓN DE INVERSIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-00-00-00",
+    "nombre": "PROPIEDAD, PLANTA Y EQUIPO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-04-01-00-00",
+    "nombre": "INMUEBLES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-02-00-00",
+    "nombre": "RODADOS /TRANSPORTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-03-00-00",
+    "nombre": "MUEBLES, ÚTILES Y ENSERES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-04-00-00",
+    "nombre": "MAQUINARIAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-05-00-00",
+    "nombre": "EQUIPOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-06-00-00",
+    "nombre": "HERRAMIENTAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-07-00-00",
+    "nombre": "BIENES FUERA DE OPERACIÓN",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-04-07-01-00",
+    "nombre": "CONSTRUCCIONES EN CURSO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-08-00-00",
+    "nombre": "MEJORAS EN PREDIO AJENO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-97-00-00",
+    "nombre": "BIENES INCORPORADOS AL AMPARO DE LA LEY N° 60/90",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-98-00-00",
+    "nombre": "BIENES EN ARRENDAMIENTO FINANCIERO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-04-99-00-00",
+    "nombre": "(-) DEPRECIACIÓN ACUMULADA",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-05-00-00-00",
+    "nombre": "OTROS ACTIVOS A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-05-01-00-00",
+    "nombre": "DERECHOS FIDUCIARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-06-00-00-00",
+    "nombre": "CARGOS DIFERIDOS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-06-01-00-00",
+    "nombre": "GASTOS DE CONSTITUCIÓN",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-06-02-00-00",
+    "nombre": "GASTOS DE ORGANIZACIÓN",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-06-03-00-00",
+    "nombre": "GASTOS DE DESARROLLO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-06-04-00-00",
+    "nombre": "GASTOS DE PROYECTOS DE INVERSION",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-06-99-00-00",
+    "nombre": "(-) AMORTIZACIÓN ACUMULADA",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-07-00-00-00",
+    "nombre": "ACTIVOS INTANGIBLES",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "1-02-07-01-00-00",
+    "nombre": "LICENCIAS, MARCAS Y PATENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-07-02-00-00",
+    "nombre": "FRANQUICIAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "1-02-07-99-00-00",
+    "nombre": "(-) AMORTIZACIÓN ACUMULADA",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-00-00-00-00-00",
+    "nombre": "PASIVO",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-00-00-00-00",
+    "nombre": "PASIVO CORRIENTE",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-01-00-00-00",
+    "nombre": "ACREEDORES COMERCIALES",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-01-01-00-00",
+    "nombre": "PROVEEDORES LOCALES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-01-02-00-00",
+    "nombre": "PROVEEDORES DEL EXTERIOR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-01-03-00-00",
+    "nombre": "INTERESES A PAGAR A PROVEEDORES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-01-04-00-00",
+    "nombre": "OTROS ACREEDORES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-01-05-00-00",
+    "nombre": "DOCUMENTOS A PAGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-02-00-00-00",
+    "nombre": "DEUDAS FINANCIERAS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-02-01-00-00",
+    "nombre": "PRÉSTAMOS DE BANCOS Y OTRAS ENTIDADES FINANCIERAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-02-02-00-00",
+    "nombre": "PRÉSTAMOS DEL DUEÑO, SOCIOS O  ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-02-03-00-00",
+    "nombre": "ARRENDAMIENTOS FINANCIEROS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-02-04-00-00",
+    "nombre": "OTROS PRÉSTAMOS A PAGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-02-05-00-00",
+    "nombre": "INTERESES A PAGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-00-00-00",
+    "nombre": "OTRAS CUENTAS POR PAGAR",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-03-01-00-00",
+    "nombre": "DEUDAS FISCALES CORRIENTES",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-03-01-01-00",
+    "nombre": "IMPUESTO A LA RENTA A PAGAR",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-01-02-00",
+    "nombre": "IVA A PAGAR",
+    "nivel": 5,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-03-01-02-01",
+    "nombre": "IVA DÉBITO 10%",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-01-02-02",
+    "nombre": "IVA DÉBITO 05%",
+    "nivel": 6,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-01-03-00",
+    "nombre": "RETENCIÓN DE IVA DÉBITO",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-01-04-00",
+    "nombre": "RETENCIONE IDU",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-02-00-00",
+    "nombre": "OBLIGACIONES LABORALES Y CARGA SOCIALES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-03-00-00",
+    "nombre": "DIVIDENDOS A PAGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-04-00-00",
+    "nombre": "PASIVOS FIDUCIARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-03-05-00-00",
+    "nombre": "UTILIDADES A DISTRIBUIR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-04-00-00-00",
+    "nombre": "PROVISIONES",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-04-01-00-00",
+    "nombre": "OBLIGACIONES POR GARANTÍAS OTORGADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-04-02-00-00",
+    "nombre": "OBLIGACIONES LEGALES POR LITIGIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-04-03-00-00",
+    "nombre": "PROVISIÓN PARA BENEFICIOS A EMPLEADOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-05-00-00-00",
+    "nombre": "INGRESOS DIFERIDOS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-01-05-01-00-00",
+    "nombre": "ANTICIPOS DE CLIENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-05-02-00-00",
+    "nombre": "SUBVENCIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-05-03-00-00",
+    "nombre": "DERECHOS DE FIDELIZACION DE CLIENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-01-05-04-00-00",
+    "nombre": "ALQUILERES COBRADOS POR ADELANTADO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-00-00-00-00",
+    "nombre": "PASIVO  NO CORRIENTE",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-01-00-00-00",
+    "nombre": "ACREEDORES COMERCIALES A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-01-01-00-00",
+    "nombre": "PROVEEDORES LOCALES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-01-02-00-00",
+    "nombre": "PROVEEDORES DEL EXTERIOR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-01-03-00-00",
+    "nombre": "INTERESES A  PAGAR A PROVEEDORES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-01-04-00-00",
+    "nombre": "OTROS ACREEDORES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-02-00-00-00",
+    "nombre": "DEUDAS FINANCIERAS A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-02-01-00-00",
+    "nombre": "PRÉSTAMOS DE BANCOS Y OTRAS ENTIDADES FINANCIERAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-02-02-00-00",
+    "nombre": "PRÉSTAMOS DEL DUEÑO, SOCIOS O  ENTIDADES VINCULADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-02-03-00-00",
+    "nombre": "ARRENDAMIENTOS FINANCIEROS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-02-04-00-00",
+    "nombre": "OTROS PRÉSTAMOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-02-05-00-00",
+    "nombre": "INTERESES A PAGAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-03-00-00-00",
+    "nombre": "OTRAS CUENTAS POR PAGAR",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-03-01-00-00",
+    "nombre": "PASIVOS POR IMPUESTOS DIFERIDOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-03-02-00-00",
+    "nombre": "PASIVOS FIDUCIARIOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-04-00-00-00",
+    "nombre": "PROVISIONES PARA OBLIGACIONES A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-04-01-00-00",
+    "nombre": "OBLIGACIONES POR GARANTÍAS OTORGADAS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-04-02-00-00",
+    "nombre": "OBLIGACIONES LEGALES POR LITIGIOS PENDIENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-04-03-00-00",
+    "nombre": "PROVISIONES PARA BENEFICIOS A EMPLEADOS",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-05-00-00-00",
+    "nombre": "INGRESOS DIFERIDOS A LARGO PLAZO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "2-02-05-01-00-00",
+    "nombre": "ANTICIPOS DE CLIENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-05-02-00-00",
+    "nombre": "SUBVENCIONES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-05-03-00-00",
+    "nombre": "DERECHO DE FIDELIZACION DE CLIENTES",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "2-02-05-04-00-00",
+    "nombre": "ALQUILERES COBRADOS POR ADELANTADO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "3-00-00-00-00-00",
+    "nombre": "PATRIMONIO NETO",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "3-01-00-00-00-00",
+    "nombre": "CAPITAL",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "3-01-01-00-00-00",
+    "nombre": "CAPITAL INTEGRADO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "3-01-01-01-00-00",
+    "nombre": "CAPITAL SUSCRIPTO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "3-01-01-02-00-00",
+    "nombre": "(-) CAPITAL A INTEGRAR",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "3-02-00-00-00-00",
+    "nombre": "RESERVAS",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "3-02-01-00-00-00",
+    "nombre": "RESERVA LEGAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "3-02-02-00-00-00",
+    "nombre": "RESERVA DE REVALÚO",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "3-02-02-01-00-00",
+    "nombre": "RESERVA DE REVALÚO FISCAL",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "3-02-02-02-00-00",
+    "nombre": "RESERVA DE REVALÚO TECNICO",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "3-02-03-00-00-00",
+    "nombre": "OTRAS RESERVAS",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "3-03-00-00-00-00",
+    "nombre": "RESULTADOS",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "3-03-01-00-00-00",
+    "nombre": "RESULTADOS ACUMULADOS",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "3-03-02-00-00-00",
+    "nombre": "RESULTADO DEL EJERCICIO",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "4-00-00-00-00-00",
+    "nombre": "INGRESOS OPERATIVOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "4-01-00-00-00-00",
+    "nombre": "VENTAS DE MERCADERÍAS",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "4-01-01-00-00-00",
+    "nombre": "VENTAS DE MERCADERÍAS GRAVADAS POR EL IVA",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "4-01-01-01-00-00",
+    "nombre": "VENTAS DE MERCADERÍAS GRAV. 10%",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "4-01-01-02-00-00",
+    "nombre": "VENTAS DE MERCADERÍAS GRAV. 5%",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "4-01-02-00-00-00",
+    "nombre": "VENTAS DE MERCADERÍAS EXENTAS DEL IVA",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "4-09-00-00-00-00",
+    "nombre": "VENTAS DE SERVICIOS GRAVADOS",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "4-98-00-00-00-00",
+    "nombre": "(-) DESCUENTOS CONCEDIDOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "4-99-00-00-00-00",
+    "nombre": "(-) DEVOLUCIONES",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "4-99-01-00-00-00",
+    "nombre": "DEVOLUCION DE MERCADERIAS",
+    "nivel": 3,
+    "imputable": false
+  },
+  {
+    "codigo": "4-99-01-01-00-00",
+    "nombre": "DEVOLUCION DE MERCA GRAV POR EL IVA",
+    "nivel": 4,
+    "imputable": false
+  },
+  {
+    "codigo": "4-99-01-01-01-00",
+    "nombre": "DEVOLUCION DE MERCA GRAV. 10%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "4-99-01-01-02-00",
+    "nombre": "DEVOLUCION DE MERCA GRAV. 5%",
+    "nivel": 5,
+    "imputable": true
+  },
+  {
+    "codigo": "4-99-01-02-00-00",
+    "nombre": "DEVOLUCION DE MERCA EXENTAS DEL IVA",
+    "nivel": 4,
+    "imputable": true
+  },
+  {
+    "codigo": "4-99-02-00-00-00",
+    "nombre": "NOTA DE CRÉDITO POR SERVICIOS",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "5-00-00-00-00-00",
+    "nombre": "COSTOS OPERATIVOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "5-01-00-00-00-00",
+    "nombre": "COSTOS DE MERCADERIAS",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "5-01-01-00-00-00",
+    "nombre": "COSTO DE MERCADERÍAS GRAVADAS POR EL IVA",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "5-01-02-00-00-00",
+    "nombre": "COSTO DE MERCADERÍAS EXENTAS DEL IVA",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "6-00-00-00-00-00",
+    "nombre": "GANANCIAS (O PÉRDIDAS) BRUTAS EN VENTAS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "7-00-00-00-00-00",
+    "nombre": "INGRESOS POR ACTIVOS BIOLÓGICOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "8-00-00-00-00-00",
+    "nombre": "OTROS INGRESOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "8-01-00-00-00-00",
+    "nombre": "INTERESES GANADOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-02-00-00-00-00",
+    "nombre": "COMISIONES COBRADAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-03-00-00-00-00",
+    "nombre": "DESCUENTOS OBTENIDOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-04-00-00-00-00",
+    "nombre": "SUBVENCIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-05-00-00-00-00",
+    "nombre": "GANANCIAS POR DIFERENCIA DE CAMBIO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-06-00-00-00-00",
+    "nombre": "GANANCIAS POR REDONDEO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-07-00-00-00-00",
+    "nombre": "BONIFICACIONES RECIBIDAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "8-08-00-00-00-00",
+    "nombre": "OTROS INGRESOS VARIOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "9-00-00-00-00-00",
+    "nombre": "GANANCIAS (O PÉRDIDAS) BRUTAS TOTALES",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "10-00-00-00-00-00",
+    "nombre": "GASTOS DE VENTAS O COMERCIALIZACIÓN",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "10-01-00-00-00-00",
+    "nombre": "SUELDOS Y OTRAS REMUNERACIONES AL PERSONAL",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "10-01-01-00-00-00",
+    "nombre": "SUELDOS Y JORNALES",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "10-01-02-00-00-00",
+    "nombre": "APORTE PATRONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "10-01-03-00-00-00",
+    "nombre": "OTROS BENEFICIOS AL PERSONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "10-02-00-00-00-00",
+    "nombre": "COMISIONES PAGADAS SOBRE VENTAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "10-03-00-00-00-00",
+    "nombre": "VIÁTICOS A VENDEDORES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "10-04-00-00-00-00",
+    "nombre": "PUBLICIDAD Y PROPAGANDA",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "10-05-00-00-00-00",
+    "nombre": "FLETES PAGADOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "10-99-00-00-00-00",
+    "nombre": "OTROS GASTOS DE VENTAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-00-00-00-00-00",
+    "nombre": "GASTOS DE ADMINISTRACIÓN",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "11-01-00-00-00-00",
+    "nombre": "SUELDOS Y OTRAS REMUNERACIONES AL PERSONAL",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "11-01-01-00-00-00",
+    "nombre": "SUELDOS Y JORNALES",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "11-01-02-00-00-00",
+    "nombre": "APORTE PATRONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "11-01-03-00-00-00",
+    "nombre": "OTROS BENEFICIOS AL PERSONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "11-01-04-00-00-00",
+    "nombre": "AGUINALDO",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "11-02-00-00-00-00",
+    "nombre": "REMUNERACIÓN PERSONAL SUPERIOR",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-03-00-00-00-00",
+    "nombre": "GASTOS DE REPRESENTACIÓN",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-04-00-00-00-00",
+    "nombre": "HONORARIOS PROFESIONALES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-05-00-00-00-00",
+    "nombre": "ALQUILERES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-06-00-00-00-00",
+    "nombre": "AGUA, LUZ, TELÉFONO E INTERNET",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-07-00-00-00-00",
+    "nombre": "MOVILIDAD",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-08-00-00-00-00",
+    "nombre": "COMBUSTIBLES Y LUBRICANTES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-09-00-00-00-00",
+    "nombre": "REPARACIONES Y MANTENIMIENTOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-10-00-00-00-00",
+    "nombre": "SEGUROS PAGADOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-11-00-00-00-00",
+    "nombre": "ÚTILES DE OFICINA",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-12-00-00-00-00",
+    "nombre": "GASTOS PAGADOS EN EL EXTERIOR",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-13-00-00-00-00",
+    "nombre": "JUICIOS Y GASTOS JUDICIALES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-14-00-00-00-00",
+    "nombre": "GASTOS DE COBRANZAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-15-00-00-00-00",
+    "nombre": "DONACIONES Y CONTRIBUCIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-16-00-00-00-00",
+    "nombre": "COMISIONES Y GASTOS BANCARIOS OPERACIONALES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-17-00-00-00-00",
+    "nombre": "IMPUESTOS, PATENTES, TASAS Y OTRAS CONTRIBUCIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-18-00-00-00-00",
+    "nombre": "MULTAS Y SANCIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "11-19-00-00-00-00",
+    "nombre": "OTROS GASTOS VARIOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "12-00-00-00-00-00",
+    "nombre": "GANANCIAS (O PÉRDIDAS) ANTES DE GASTOS FINANCIEROS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "13-00-00-00-00-00",
+    "nombre": "GASTOS BANCARIOS Y FINANCIEROS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "13-01-00-00-00-00",
+    "nombre": "INTERESES PAGADOS A ENTIDADES BANCARIAS Y FINANCIERAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "13-02-00-00-00-00",
+    "nombre": "OTROS INTERESES PAGADOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "13-03-00-00-00-00",
+    "nombre": "COMISIONES Y GASTOS BANCARIOS SOBRE OPERACIONES CREDITICIAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "13-04-00-00-00-00",
+    "nombre": "PÉRDIDAS POR DIFERENCIA DE CAMBIO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "13-05-00-00-00-00",
+    "nombre": "PÉRDIDAS POR REDONDEO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "14-00-00-00-00-00",
+    "nombre": "PREVISIONES",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "14-01-00-00-00-00",
+    "nombre": "DESAFECTACIÓN DE PREVISIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "14-02-00-00-00-00",
+    "nombre": "(-) CONSTITUCIÓN DE PREVISIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "15-00-00-00-00-00",
+    "nombre": "DEPRECIACIONES Y AMORTIZACIONES DE ACTIVOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "15-01-00-00-00-00",
+    "nombre": "DEPRECIACIONES DEL EJERCICIO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "15-02-00-00-00-00",
+    "nombre": "AMORTIZACIONES DEL EJERCICIO",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-00-00-00-00",
+    "nombre": "GASTOS NO DEDUCIBLES",
+    "nivel": 2,
+    "imputable": false
+  },
+  {
+    "codigo": "15-03-01-00-00-00",
+    "nombre": "SUELDOS Y JORNALES",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-02-00-00-00",
+    "nombre": "APORTE PATRONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-03-00-00-00",
+    "nombre": "OTROS BENEFICIOS AL PERSONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-04-00-00-00",
+    "nombre": "AGUINALDO",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-05-00-00-00",
+    "nombre": "SUELDOS Y JORNALES",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-06-00-00-00",
+    "nombre": "APORTE PATRONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-07-00-00-00",
+    "nombre": "OTROS BENEFICIOS AL PERSONAL",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "15-03-08-00-00-00",
+    "nombre": "AGUINALDO",
+    "nivel": 3,
+    "imputable": true
+  },
+  {
+    "codigo": "16-00-00-00-00-00",
+    "nombre": "GANANCIAS (O PÉRDIDAS) OPERATIVAS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "17-00-00-00-00-00",
+    "nombre": "OTROS RESULTADOS NO OPERATIVOS",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "17-01-00-00-00-00",
+    "nombre": "UTILIDAD/PÉRDIDA EN VENTA DE ACTIVOS FIJOS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "17-02-00-00-00-00",
+    "nombre": "UTILIDAD/PÉRDIDA EN VENTA DE INVERSIONES",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "17-03-00-00-00-00",
+    "nombre": "CUENTAS INCOBRABLES RECUPERADAS",
+    "nivel": 2,
+    "imputable": true
+  },
+  {
+    "codigo": "18-00-00-00-00-00",
+    "nombre": "GANANCIAS (O PÉRDIDAS ) ANTES DEL IMPUESTO A LA RENTA",
+    "nivel": 1,
+    "imputable": false
+  },
+  {
+    "codigo": "19-00-00-00-00-00",
+    "nombre": "IMPUESTO A LA RENTA",
+    "nivel": 1,
+    "imputable": true
+  },
+  {
+    "codigo": "20-00-00-00-00-00",
+    "nombre": "GANANCIAS/PÉRDIDAS NETAS DEL EJERCICIO",
+    "nivel": 1,
+    "imputable": false
+  }
+]

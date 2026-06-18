@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs } from "@/lib/format";
 import type { IncomeStatement, StatementRow } from "@/lib/types";
+import { PeriodFilter, rangeQuery, type Range } from "../_components/PeriodFilter";
 
 export default function EstadoResultadosPage() {
   const { companyId } = useAuth();
   const [data, setData] = useState<IncomeStatement | null>(null);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<Range>({ desde: "", hasta: "" });
 
   useEffect(() => {
     setLoading(true);
-    api<IncomeStatement>("/contabilidad/estado-resultados")
+    api<IncomeStatement>(`/contabilidad/estado-resultados${rangeQuery(range)}`)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [companyId]);
+  }, [companyId, range]);
 
   const ganancia = (data?.resultado ?? 0) >= 0;
 
@@ -28,8 +30,10 @@ export default function EstadoResultadosPage() {
           <h1 className="text-xl font-semibold text-foreground">Estado de resultados</h1>
           <span className="font-mono text-xs font-semibold text-slate-400">CONC006</span>
         </div>
-        <p className="text-sm text-slate-500">Ingresos menos egresos del ejercicio.</p>
+        <p className="text-sm text-slate-500">Ingresos menos egresos del ejercicio. Filtra por rango de fechas o deja vacio para todo el historico.</p>
       </div>
+
+      <PeriodFilter onApply={setRange} />
 
       {loading ? (
         <p className="text-slate-400">Cargando...</p>

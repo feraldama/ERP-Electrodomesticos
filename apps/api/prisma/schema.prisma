@@ -1112,9 +1112,26 @@ model ChartOfAccount {
   parent    ChartOfAccount?  @relation("AccountTree", fields: [parentId], references: [id])
   children  ChartOfAccount[] @relation("AccountTree")
   lines     AccountingEntryLine[]
+  config    AccountingConfig[]
 
   @@unique([companyId, codigo])
   @@map("chart_of_accounts")
+}
+
+// Mapeo de cuentas operativas para el posting automatico. Desacopla el motor de
+// asientos del plan de cuentas concreto: cada clave (CAJA, CLIENTES, IVA_DEBITO_10...)
+// apunta a una cuenta imputable de la empresa, editable desde pantalla.
+model AccountingConfig {
+  id        Int    @id @default(autoincrement())
+  companyId Int
+  clave     String // CAJA, CLIENTES, PROVEEDORES, IVA_DEBITO_10/5, IVA_CREDITO_10/5, VENTAS_10/5/EXENTA, COMPRAS_GRAV/EXENTA
+  accountId Int
+
+  account   ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([companyId, clave])
+  @@index([companyId])
+  @@map("accounting_config")
 }
 
 enum CuentaTipo {
@@ -1154,6 +1171,7 @@ model AccountingEntry {
   period      FiscalPeriod? @relation(fields: [periodId], references: [id])
   lines       AccountingEntryLine[]
 
+  @@unique([companyId, numero])
   @@index([companyId, fecha])
   @@map("accounting_entries")
 }

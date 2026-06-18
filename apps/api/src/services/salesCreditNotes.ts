@@ -215,7 +215,7 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
       tipo: "NOTA_CREDITO_VENTA",
       origenTipo: "NOTA_CREDITO",
       origenId: nc.id,
-      payload: { numero, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
+      payload: { numero, fecha: nc.fecha, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
     },
   });
 

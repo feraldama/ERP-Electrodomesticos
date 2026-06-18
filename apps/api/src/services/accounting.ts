@@ -1,18 +1,27 @@
 import { prisma } from "../db.js";
+import { HttpError } from "../http.js";
 
-// Cuentas imputables del plan estandar (deben existir por empresa, ver seed).
-const CTA = {
-  CAJA: "1.1.01.001",
-  DEUDORES: "1.1.02.001",
-  IVA_CREDITO: "1.1.03.001",
-  PROVEEDORES: "2.1.01.001",
-  IVA_DEBITO: "2.1.02.001",
-  VENTAS: "4.1.01.001",
-  COMPRAS: "5.1.01.001",
-} as const;
+// Claves de cuentas operativas. Cada una se resuelve a una cuenta concreta del plan
+// de la empresa via AccountingConfig (tabla editable), no por codigo fijo. El plan del
+// cliente separa ventas / IVA / costos por tasa, asi que el posting desglosa 10/5/exenta.
+export const CLAVES = [
+  "CAJA",
+  "CLIENTES",
+  "PROVEEDORES",
+  "IVA_DEBITO_10",
+  "IVA_DEBITO_5",
+  "IVA_CREDITO_10",
+  "IVA_CREDITO_5",
+  "VENTAS_10",
+  "VENTAS_5",
+  "VENTAS_EXENTA",
+  "COMPRAS_GRAV",
+  "COMPRAS_EXENTA",
+  "RESULTADO_EJERCICIO",
+] as const;
 
 interface LineDraft {
-  codigo: string;
+  clave: string;
   debe: number;
   haber: number;
   detalle?: string;
@@ -20,94 +29,101 @@ interface LineDraft {
 
 const r = (n: number) => Math.round(Number(n) || 0);
 
+// Lineas de reconocimiento de ventas (ventas gravadas/exentas + IVA debito), por tasa.
+// side="haber": reconocimiento normal; side="debe": reversa (NC / anulacion).
+function ventasLines(p: Record<string, unknown>, side: "debe" | "haber"): LineDraft[] {
+  const num = (k: string) => r(p[k] as number);
+  const put = (clave: string, monto: number): LineDraft =>
+    side === "haber" ? { clave, debe: 0, haber: monto } : { clave, debe: monto, haber: 0 };
+  return [
+    put("VENTAS_10", num("subtotal10")),
+    put("VENTAS_5", num("subtotal5")),
+    put("VENTAS_EXENTA", num("subtotalExenta")),
+    put("IVA_DEBITO_10", num("iva10")),
+    put("IVA_DEBITO_5", num("iva5")),
+  ];
+}
+
+// Lineas de costo de compras (mercaderia gravada/exenta + IVA credito), por tasa.
+// side="debe": compra normal; side="haber": reversa (NC / anulacion).
+function comprasLines(p: Record<string, unknown>, side: "debe" | "haber"): LineDraft[] {
+  const num = (k: string) => r(p[k] as number);
+  const put = (clave: string, monto: number): LineDraft =>
+    side === "debe" ? { clave, debe: monto, haber: 0 } : { clave, debe: 0, haber: monto };
+  return [
+    put("COMPRAS_GRAV", num("subtotal10") + num("subtotal5")),
+    put("COMPRAS_EXENTA", num("subtotalExenta")),
+    put("IVA_CREDITO_10", num("iva10")),
+    put("IVA_CREDITO_5", num("iva5")),
+  ];
+}
+
 /**
- * Traduce un evento contable a las lineas del asiento (debe/haber por cuenta).
- * neto = exenta + gravadas; iva = iva5 + iva10. Modelo paraguayo (IVA incluido
- * ya desglosado en el evento). Las lineas en cero se descartan luego.
+ * Traduce un evento contable a las lineas del asiento (debe/haber por clave de cuenta).
+ * Modelo paraguayo (IVA incluido ya desglosado en el evento). Las lineas en cero se
+ * descartan luego.
  */
 function buildLines(tipo: string, p: Record<string, unknown>): LineDraft[] {
   const num = (k: string) => r(p[k] as number);
-  const neto = num("subtotalExenta") + num("subtotal5") + num("subtotal10");
-  const iva = num("iva5") + num("iva10");
   const total = num("total");
 
   switch (tipo) {
     case "VENTA_CONTADO":
-      return [
-        { codigo: CTA.CAJA, debe: total, haber: 0 },
-        { codigo: CTA.VENTAS, debe: 0, haber: neto },
-        { codigo: CTA.IVA_DEBITO, debe: 0, haber: iva },
-      ];
+      return [{ clave: "CAJA", debe: total, haber: 0 }, ...ventasLines(p, "haber")];
     case "VENTA_CREDITO": {
       const entrega = num("entrega");
       const financiado = total - entrega;
       return [
-        { codigo: CTA.CAJA, debe: entrega, haber: 0 },
-        { codigo: CTA.DEUDORES, debe: financiado, haber: 0 },
-        { codigo: CTA.VENTAS, debe: 0, haber: neto },
-        { codigo: CTA.IVA_DEBITO, debe: 0, haber: iva },
+        { clave: "CAJA", debe: entrega, haber: 0 },
+        { clave: "CLIENTES", debe: financiado, haber: 0 },
+        ...ventasLines(p, "haber"),
       ];
     }
     case "COMPRA": {
       const contado = (p.condicion as string) === "CONTADO";
       return [
-        { codigo: CTA.COMPRAS, debe: neto, haber: 0 },
-        { codigo: CTA.IVA_CREDITO, debe: iva, haber: 0 },
-        { codigo: contado ? CTA.CAJA : CTA.PROVEEDORES, debe: 0, haber: total },
+        ...comprasLines(p, "debe"),
+        { clave: contado ? "CAJA" : "PROVEEDORES", debe: 0, haber: total },
       ];
     }
     case "COBRO":
       return [
-        { codigo: CTA.CAJA, debe: num("montoTotal"), haber: 0 },
-        { codigo: CTA.DEUDORES, debe: 0, haber: num("montoTotal") },
+        { clave: "CAJA", debe: num("montoTotal"), haber: 0 },
+        { clave: "CLIENTES", debe: 0, haber: num("montoTotal") },
       ];
     case "PAGO":
       return [
-        { codigo: CTA.PROVEEDORES, debe: num("montoTotal"), haber: 0 },
-        { codigo: CTA.CAJA, debe: 0, haber: num("montoTotal") },
+        { clave: "PROVEEDORES", debe: num("montoTotal"), haber: 0 },
+        { clave: "CAJA", debe: 0, haber: num("montoTotal") },
       ];
     case "PAGO_ANULADO": // reversa de pago (cheque rechazado/anulado): repone la deuda
       return [
-        { codigo: CTA.CAJA, debe: num("montoTotal"), haber: 0 },
-        { codigo: CTA.PROVEEDORES, debe: 0, haber: num("montoTotal") },
+        { clave: "CAJA", debe: num("montoTotal"), haber: 0 },
+        { clave: "PROVEEDORES", debe: 0, haber: num("montoTotal") },
       ];
     case "NOTA_CREDITO_VENTA": // reversa de venta
-      return [
-        { codigo: CTA.VENTAS, debe: neto, haber: 0 },
-        { codigo: CTA.IVA_DEBITO, debe: iva, haber: 0 },
-        { codigo: CTA.DEUDORES, debe: 0, haber: total },
-      ];
+      return [...ventasLines(p, "debe"), { clave: "CLIENTES", debe: 0, haber: total }];
     case "NOTA_CREDITO_COMPRA": // reversa de compra
-      return [
-        { codigo: CTA.PROVEEDORES, debe: total, haber: 0 },
-        { codigo: CTA.COMPRAS, debe: 0, haber: neto },
-        { codigo: CTA.IVA_CREDITO, debe: 0, haber: iva },
-      ];
+      return [{ clave: "PROVEEDORES", debe: total, haber: 0 }, ...comprasLines(p, "haber")];
     case "VENTA_ANULADA": {
       // Reversa exacta del asiento de la venta (contado o credito).
       const contado = (p.condicion as string) === "CONTADO";
       if (contado) {
-        return [
-          { codigo: CTA.VENTAS, debe: neto, haber: 0 },
-          { codigo: CTA.IVA_DEBITO, debe: iva, haber: 0 },
-          { codigo: CTA.CAJA, debe: 0, haber: total },
-        ];
+        return [...ventasLines(p, "debe"), { clave: "CAJA", debe: 0, haber: total }];
       }
       const entrega = num("entrega");
       const financiado = total - entrega;
       return [
-        { codigo: CTA.VENTAS, debe: neto, haber: 0 },
-        { codigo: CTA.IVA_DEBITO, debe: iva, haber: 0 },
-        { codigo: CTA.CAJA, debe: 0, haber: entrega },
-        { codigo: CTA.DEUDORES, debe: 0, haber: financiado },
+        ...ventasLines(p, "debe"),
+        { clave: "CAJA", debe: 0, haber: entrega },
+        { clave: "CLIENTES", debe: 0, haber: financiado },
       ];
     }
     case "COMPRA_ANULADA": {
       const contado = (p.condicion as string) === "CONTADO";
       return [
-        { codigo: contado ? CTA.CAJA : CTA.PROVEEDORES, debe: total, haber: 0 },
-        { codigo: CTA.COMPRAS, debe: 0, haber: neto },
-        { codigo: CTA.IVA_CREDITO, debe: 0, haber: iva },
+        { clave: contado ? "CAJA" : "PROVEEDORES", debe: total, haber: 0 },
+        ...comprasLines(p, "haber"),
       ];
     }
     default:
@@ -142,11 +158,33 @@ export interface AccountBalance {
   saldo: number; // debe - haber
 }
 
-/** Saldos acumulados por cuenta (solo cuentas con movimiento), ordenados por codigo. */
-export async function getAccountBalances(companyId: number): Promise<AccountBalance[]> {
+/** Filtro de fecha (rango) para asientos, usado por reportes y cierre. */
+export interface FechaRange {
+  gte?: Date;
+  lte?: Date;
+}
+
+/**
+ * Saldos por cuenta (solo cuentas con movimiento), ordenados por codigo.
+ * Si se pasa `fecha`, acota a los asientos dentro del rango (reportes por periodo).
+ * `excludeCierre` deja fuera los asientos de cierre de ejercicio (para que el estado
+ * de resultados muestre el resultado operativo y no quede neteado a cero).
+ */
+export async function getAccountBalances(
+  companyId: number,
+  fecha?: FechaRange,
+  opts?: { excludeCierre?: boolean }
+): Promise<AccountBalance[]> {
   const grupos = await prisma.accountingEntryLine.groupBy({
     by: ["accountId"],
-    where: { entry: { companyId } },
+    where: {
+      entry: {
+        companyId,
+        ...(fecha ? { fecha } : {}),
+        // Excluir CIERRE conservando asientos con origenTipo nulo (manuales futuros).
+        ...(opts?.excludeCierre ? { OR: [{ origenTipo: { not: "CIERRE" } }, { origenTipo: null }] } : {}),
+      },
+    },
     _sum: { debe: true, haber: true },
   });
   const cuentas = await prisma.chartOfAccount.findMany({
@@ -177,14 +215,14 @@ export interface ProcessResult {
  * falla guarda su error y no frena al resto.
  */
 export async function processPendingEvents(companyId: number): Promise<ProcessResult> {
-  const accounts = await prisma.chartOfAccount.findMany({
+  const config = await prisma.accountingConfig.findMany({
     where: { companyId },
-    select: { id: true, codigo: true },
+    select: { clave: true, accountId: true },
   });
-  const accId = new Map(accounts.map((a) => [a.codigo, a.id]));
-  const resolve = (codigo: string) => {
-    const id = accId.get(codigo);
-    if (!id) throw new Error(`Falta la cuenta ${codigo} en el plan de cuentas`);
+  const accId = new Map(config.map((c) => [c.clave, c.accountId]));
+  const resolve = (clave: string) => {
+    const id = accId.get(clave);
+    if (!id) throw new Error(`Falta configurar la cuenta para "${clave}" (Contabilidad > Configuracion de cuentas)`);
     return id;
   };
 
@@ -193,33 +231,46 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
     orderBy: { id: "asc" },
   });
 
-  // Numero de asiento correlativo por empresa
-  let numero = await prisma.accountingEntry.count({ where: { companyId } });
+  // Periodos fiscales de la empresa (pocos): para fechar el asiento en su ejercicio
+  // y bloquear el posting sobre un periodo ya cerrado.
+  const periods = await prisma.fiscalPeriod.findMany({ where: { companyId } });
+  const periodoDe = (fecha: Date) =>
+    periods.find((p) => fecha >= p.fechaInicio && fecha <= p.fechaFin) ?? null;
 
   const result: ProcessResult = { procesados: 0, errores: 0, detalleErrores: [] };
 
   for (const ev of events) {
     try {
       const payload = (ev.payload ?? {}) as Record<string, unknown>;
+      // Fecha contable = fecha del documento (si el evento la trae); las reversas /
+      // anulaciones no la traen y se fechan el dia del evento (ev.createdAt).
+      const fecha = payload.fecha ? new Date(payload.fecha as string) : ev.createdAt;
+      const periodo = periodoDe(fecha);
+      if (periodo?.cerrado) throw new Error(`El periodo "${periodo.nombre}" esta cerrado; no admite nuevos asientos`);
+
       const lines = buildLines(ev.tipo, payload).filter((l) => r(l.debe) > 0 || r(l.haber) > 0);
       const totalDebe = lines.reduce((s, l) => s + r(l.debe), 0);
       const totalHaber = lines.reduce((s, l) => s + r(l.haber), 0);
       if (lines.length === 0) throw new Error("El evento no genero lineas");
       if (totalDebe !== totalHaber) throw new Error(`Asiento descuadrado (debe ${totalDebe} != haber ${totalHaber})`);
 
-      numero += 1;
-      const numeroAsiento = numero;
       await prisma.$transaction(async (tx) => {
+        // Numero correlativo por empresa, calculado dentro de la transaccion. La
+        // unicidad la garantiza @@unique([companyId, numero]): si dos procesos
+        // colisionan, el segundo falla y el evento se reintenta luego.
+        const agg = await tx.accountingEntry.aggregate({ where: { companyId }, _max: { numero: true } });
+        const numeroAsiento = (agg._max.numero ?? 0) + 1;
         const entry = await tx.accountingEntry.create({
           data: {
             companyId,
+            periodId: periodo?.id ?? null,
             numero: numeroAsiento,
-            fecha: ev.createdAt,
+            fecha,
             glosa: glosaDe(ev.tipo, payload),
             origenTipo: ev.origenTipo,
             origenId: ev.origenId,
             lines: {
-              create: lines.map((l) => ({ accountId: resolve(l.codigo), debe: r(l.debe), haber: r(l.haber), detalle: l.detalle ?? null })),
+              create: lines.map((l) => ({ accountId: resolve(l.clave), debe: r(l.debe), haber: r(l.haber), detalle: l.detalle ?? null })),
             },
           },
         });
@@ -238,4 +289,79 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
   }
 
   return result;
+}
+
+export interface CierreResult {
+  numeroAsiento: number | null;
+  totalIngresos: number;
+  totalEgresos: number;
+  resultado: number;
+}
+
+/**
+ * Cierra un ejercicio: genera el asiento de cierre (fecha = fin del periodo) que
+ * lleva los saldos de las cuentas de INGRESO y EGRESO a cero contra la cuenta de
+ * RESULTADO_EJERCICIO (patrimonio), y marca el periodo como cerrado. Idempotente
+ * por guardas: falla si ya esta cerrado o si ya existe un asiento de cierre.
+ */
+export async function cerrarEjercicio(companyId: number, periodId: number): Promise<CierreResult> {
+  const periodo = await prisma.fiscalPeriod.findFirst({ where: { id: periodId, companyId } });
+  if (!periodo) throw new HttpError(404, "Ejercicio no encontrado");
+  if (periodo.cerrado) throw new HttpError(409, "El ejercicio ya esta cerrado");
+  const yaCierre = await prisma.accountingEntry.count({ where: { companyId, periodId, origenTipo: "CIERRE" } });
+  if (yaCierre > 0) throw new HttpError(409, "El ejercicio ya tiene un asiento de cierre");
+
+  const cfg = await prisma.accountingConfig.findUnique({
+    where: { companyId_clave: { companyId, clave: "RESULTADO_EJERCICIO" } },
+    select: { accountId: true },
+  });
+  if (!cfg) throw new HttpError(400, 'Falta configurar la cuenta "RESULTADO_EJERCICIO" (Contabilidad > Configuracion de cuentas)');
+
+  // Saldos de resultado del ejercicio (operativos: sin asientos de cierre previos).
+  const bals = await getAccountBalances(companyId, { gte: periodo.fechaInicio, lte: periodo.fechaFin }, { excludeCierre: true });
+  const lines: Array<{ accountId: number; debe: number; haber: number }> = [];
+  let totalIngresos = 0;
+  let totalEgresos = 0;
+  for (const b of bals) {
+    if (b.tipo === "INGRESO") {
+      const ingreso = r(b.haber - b.debe); // saldo acreedor normal
+      if (ingreso !== 0) {
+        lines.push({ accountId: b.accountId, debe: ingreso, haber: 0 }); // debita para cancelar
+        totalIngresos += ingreso;
+      }
+    } else if (b.tipo === "EGRESO") {
+      const egreso = r(b.debe - b.haber); // saldo deudor normal
+      if (egreso !== 0) {
+        lines.push({ accountId: b.accountId, debe: 0, haber: egreso }); // acredita para cancelar
+        totalEgresos += egreso;
+      }
+    }
+  }
+  const resultado = totalIngresos - totalEgresos;
+  // Contrapartida del resultado contra patrimonio (utilidad al haber, perdida al debe).
+  if (resultado > 0) lines.push({ accountId: cfg.accountId, debe: 0, haber: resultado });
+  else if (resultado < 0) lines.push({ accountId: cfg.accountId, debe: -resultado, haber: 0 });
+
+  let numeroAsiento: number | null = null;
+  await prisma.$transaction(async (tx) => {
+    if (lines.length > 0) {
+      const agg = await tx.accountingEntry.aggregate({ where: { companyId }, _max: { numero: true } });
+      numeroAsiento = (agg._max.numero ?? 0) + 1;
+      await tx.accountingEntry.create({
+        data: {
+          companyId,
+          periodId,
+          numero: numeroAsiento,
+          fecha: periodo.fechaFin,
+          glosa: `Cierre de ejercicio ${periodo.nombre}`,
+          origenTipo: "CIERRE",
+          origenId: periodId,
+          lines: { create: lines },
+        },
+      });
+    }
+    await tx.fiscalPeriod.update({ where: { id: periodId }, data: { cerrado: true } });
+  });
+
+  return { numeroAsiento, totalIngresos, totalEgresos, resultado };
 }

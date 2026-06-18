@@ -159,7 +159,7 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
       tipo: "NOTA_CREDITO_COMPRA",
       origenTipo: "NOTA_CREDITO_COMPRA",
       origenId: nc.id,
-      payload: { nroComprobante: input.nroComprobante, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
+      payload: { nroComprobante: input.nroComprobante, fecha: nc.fecha, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
     },
   });
 

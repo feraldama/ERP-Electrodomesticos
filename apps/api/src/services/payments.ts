@@ -87,7 +87,7 @@ export async function createSupplierPayment(prisma: Prisma.TransactionClient, in
       tipo: "PAGO",
       origenTipo: "PAGO",
       origenId: payment.id,
-      payload: { montoTotal: monto, metodo: input.metodo, supplierId: input.supplierId },
+      payload: { montoTotal: monto, fecha: input.fecha, metodo: input.metodo, supplierId: input.supplierId },
     },
   });
 
@@ -171,6 +171,7 @@ export async function createCollection(prisma: Prisma.TransactionClient, input: 
       origenId: payment.id,
       payload: {
         montoTotal,
+        fecha: input.fecha,
         metodo: input.metodo,
         cuotas: apps.map((a) => ({ installmentId: a.installmentId, monto: a.monto })),
       },
