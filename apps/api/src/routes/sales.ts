@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSale, anularSale } from "../services/sales.js";
-import { parseListParams, paginated, wantsPagination, listOrPaginate } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
 
 // =====================================================================
 // LISTAS DE PRECIOS (compartidas entre empresas, como el catalogo)
@@ -28,7 +28,7 @@ priceListsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string | undefined)?.trim();
-    const where = q ? { nombre: { contains: q, mode: "insensitive" as const } } : {};
+    const where = buildWordSearch(q, ["nombre"]);
     const include = { _count: { select: { prices: true } } };
     res.json(
       await listOrPaginate(
@@ -95,14 +95,7 @@ articlePricesRouter.get(
     const articles = await prisma.article.findMany({
       where: {
         activo: true,
-        ...(q
-          ? {
-              OR: [
-                { codigo: { contains: q, mode: "insensitive" } },
-                { descripcion: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
+        ...buildWordSearch(q, ["codigo", "descripcion"]),
       },
       orderBy: { descripcion: "asc" },
       take: 500,
@@ -273,6 +266,8 @@ const saleSchema = z.object({
       })
     )
     .min(1, "Agrega al menos un articulo"),
+  // Condicion de la venta (independiente de la lista). Si no viene, se usa la de la lista.
+  condicion: z.enum(["CONTADO", "CREDITO"]).optional(),
   // Credito: nro de cuotas (override del de la lista)
   cuotas: z.number().int().positive().optional(),
   // Contado: pago total. Credito: entrega inicial (puede ir vacio)
@@ -312,6 +307,7 @@ salesRouter.post(
           observacion: d.observacion ?? null,
           usuarioId: req.auth?.userId ?? null,
           items: d.items,
+          condicion: d.condicion,
           cuotas: d.cuotas,
           payments: d.payments,
         })
@@ -345,14 +341,7 @@ salesRouter.get(
     // matchea por `numero`; el cliente por razon social.
     const where = {
       companyId: req.companyId,
-      ...(q
-        ? {
-            OR: [
-              { numero: { contains: q, mode: "insensitive" as const } },
-              { customer: { person: { razonSocial: { contains: q, mode: "insensitive" as const } } } },
-            ],
-          }
-        : {}),
+      ...buildWordSearch(q, ["numero", "customer.person.razonSocial"]),
     };
     const include = {
       customer: { include: { person: { select: { razonSocial: true } } } },

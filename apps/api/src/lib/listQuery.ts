@@ -98,6 +98,41 @@ export function parseListParams(
   };
 }
 
+/**
+ * Busqueda por palabras para un where de Prisma.
+ *
+ * Divide `q` en terminos (por espacios) y exige que CADA termino aparezca
+ * (contains, case-insensitive) en al menos uno de los `fields`, sin importar el
+ * orden. Asi "ropero uru" encuentra "Ropero 2 puertas Uruguayo".
+ *
+ * Los `fields` admiten rutas anidadas con puntos para buscar en relaciones,
+ * ej. "supplier.person.razonSocial" -> { supplier: { person: { razonSocial: {...} } } }.
+ *
+ * Devuelve `{}` si no hay query (seguro para hacer spread dentro de un where),
+ * o `{ AND: [ { OR: [...] }, ... ] }` si hay terminos.
+ */
+export function buildWordSearch(
+  q: string | undefined,
+  fields: string[]
+): Record<string, unknown> {
+  const terms = q?.trim() ? q.trim().split(/\s+/).filter(Boolean) : [];
+  if (terms.length === 0 || fields.length === 0) return {};
+
+  const contains = (path: string, term: string): Record<string, unknown> => {
+    const parts = path.split(".");
+    return parts.reduceRight<Record<string, unknown>>(
+      (acc, key, i) => ({
+        [key]: i === parts.length - 1 ? { contains: term, mode: "insensitive" } : acc,
+      }),
+      {}
+    );
+  };
+
+  return {
+    AND: terms.map((term) => ({ OR: fields.map((f) => contains(f, term)) })),
+  };
+}
+
 /** Envuelve los resultados en la forma de respuesta uniforme. */
 export function paginated<T>(items: T[], total: number, page: number, pageSize: number): Paginated<T> {
   return { items, total, page, pageSize };

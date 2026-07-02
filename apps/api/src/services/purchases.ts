@@ -2,6 +2,7 @@ import type { IvaTipo, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { crearSeriesCompra, eliminarSeriesCompra } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
+import { agruparPorCategoria } from "./accounting.js";
 
 export interface PurchaseItemInput {
   articleId: number;
@@ -66,7 +67,7 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   const articleIds = [...new Set(input.items.map((i) => i.articleId))];
   const arts = await prisma.article.findMany({
     where: { id: { in: articleIds } },
-    select: { id: true, controlaSerie: true, descripcion: true },
+    select: { id: true, controlaSerie: true, descripcion: true, categoryId: true },
   });
   const artById = new Map(arts.map((a) => [a.id, a]));
   for (const it of input.items) {
@@ -181,6 +182,9 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
         iva5,
         iva10,
         total,
+        categorias: agruparPorCategoria(
+          computed.map((c) => ({ categoryId: artById.get(c.articleId)?.categoryId ?? null, ivaTipo: c.ivaTipo, total: c.totalLinea }))
+        ),
       },
     },
   });
@@ -204,12 +208,26 @@ export interface AnularPurchaseInput {
 export async function anularPurchase(prisma: Prisma.TransactionClient, input: AnularPurchaseInput) {
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
+    include: { items: true },
   });
   if (!invoice) throw new Error("Compra no encontrada");
   if (invoice.estado === "ANULADO") throw new Error("La compra ya esta anulada");
 
   const ncCount = await prisma.purchaseCreditNote.count({ where: { invoiceId: invoice.id } });
   if (ncCount > 0) throw new Error("La compra tiene notas de credito; no se puede anular");
+
+  // Categoria de cada articulo, para revertir la compra contra la misma cuenta de compra.
+  const catByArticle = new Map<number, number | null>(
+    (
+      await prisma.article.findMany({
+        where: { id: { in: [...new Set(invoice.items.map((i) => i.articleId))] } },
+        select: { id: true, categoryId: true },
+      })
+    ).map((a) => [a.id, a.categoryId ?? null])
+  );
+  const categorias = agruparPorCategoria(
+    invoice.items.map((it) => ({ categoryId: catByArticle.get(it.articleId) ?? null, ivaTipo: it.ivaTipo, total: Number(it.total) }))
+  );
 
   // Series/IMEI: bloquea si alguna unidad ya salio; si todas EN_STOCK, las elimina.
   await eliminarSeriesCompra(prisma, invoice.id);
@@ -261,6 +279,7 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
         iva5: invoice.iva5,
         iva10: invoice.iva10,
         total: invoice.total,
+        categorias,
       },
     },
   });

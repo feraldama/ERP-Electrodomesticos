@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { applyStockMovement, applyTransfer } from "../services/stock.js";
 import { requirePermission } from "../middleware/permission.js";
-import { parseListParams, paginated, wantsPagination, listOrPaginate } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
 
 // Depositos (por empresa)
 export const warehousesRouter = Router();
@@ -18,14 +18,7 @@ warehousesRouter.get(
     const q = (req.query.q as string | undefined)?.trim();
     const where = {
       companyId: req.companyId,
-      ...(q
-        ? {
-            OR: [
-              { codigo: { contains: q, mode: "insensitive" as const } },
-              { nombre: { contains: q, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...buildWordSearch(q, ["codigo", "nombre"]),
     };
     res.json(
       await listOrPaginate(
@@ -94,16 +87,7 @@ stockRouter.get(
     const where = {
       warehouse: { companyId: req.companyId },
       ...(warehouseId ? { warehouseId } : {}),
-      ...(q
-        ? {
-            article: {
-              OR: [
-                { codigo: { contains: q, mode: "insensitive" as const } },
-                { descripcion: { contains: q, mode: "insensitive" as const } },
-              ],
-            },
-          }
-        : {}),
+      ...buildWordSearch(q, ["article.codigo", "article.descripcion"]),
     };
     const include = {
       article: { select: { id: true, codigo: true, descripcion: true, stockMinimo: true } },

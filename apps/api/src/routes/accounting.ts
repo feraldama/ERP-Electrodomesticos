@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
-import { processPendingEvents, getAccountBalances, cerrarEjercicio, CLAVES } from "../services/accounting.js";
+import { processPendingEvents, getAccountBalances, cerrarEjercicio, CLAVES, CLAVES_OPCIONALES } from "../services/accounting.js";
 
 // =====================================================================
 // CONTABILIDAD: plan de cuentas, libro diario y procesamiento de eventos
@@ -130,6 +130,8 @@ contabilidadRouter.get(
           accountId: f?.accountId ?? null,
           codigo: f?.account.codigo ?? null,
           nombre: f?.account.nombre ?? null,
+          // Opcional: si no se asigna, el posting cae a CAJA (no genera error).
+          opcional: CLAVES_OPCIONALES.has(clave),
         };
       })
     );

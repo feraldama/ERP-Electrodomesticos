@@ -22,6 +22,11 @@ const CLAVE_LABEL: Record<string, string> = {
   COMPRAS_GRAV: "Compras / costo gravado",
   COMPRAS_EXENTA: "Compras / costo exento",
   RESULTADO_EJERCICIO: "Resultado del ejercicio (cierre)",
+  MEDIO_EFECTIVO: "Cobros/pagos en efectivo",
+  MEDIO_TARJETA_DEBITO: "Cobros/pagos con tarjeta debito",
+  MEDIO_TARJETA_CREDITO: "Cobros/pagos con tarjeta credito",
+  MEDIO_TRANSFERENCIA: "Cobros/pagos por transferencia",
+  MEDIO_CHEQUE: "Pagos con cheque",
 };
 
 export default function ConfigCuentasPage() {
@@ -71,7 +76,8 @@ export default function ConfigCuentasPage() {
     }
   }
 
-  const sinAsignar = config.filter((r) => !r.accountId).length;
+  // Las claves opcionales (medios de pago) caen a CAJA si no se asignan: no cuentan como faltantes.
+  const sinAsignar = config.filter((r) => !r.accountId && !r.opcional).length;
 
   return (
     <div className="max-w-4xl">
@@ -82,7 +88,8 @@ export default function ConfigCuentasPage() {
         </div>
         <p className="text-sm text-slate-500">
           Asocia cada concepto del posting automatico a una cuenta imputable del plan. El motor de
-          asientos usa estas cuentas al procesar ventas, compras, cobros y pagos.
+          asientos usa estas cuentas al procesar ventas, compras, cobros y pagos. Las cuentas por
+          medio de pago son opcionales: si no las asignas, esos cobros y pagos se imputan a Caja.
         </p>
       </div>
 
@@ -109,6 +116,11 @@ export default function ConfigCuentasPage() {
                   <tr key={r.clave} className="border-b border-border last:border-0">
                     <td className="px-4 py-2 text-foreground">
                       {CLAVE_LABEL[r.clave] ?? r.clave}
+                      {r.opcional && (
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+                          opcional (cae a Caja)
+                        </span>
+                      )}
                       {r.codigo && <span className="ml-2 font-mono text-xs text-slate-400">{r.codigo}</span>}
                     </td>
                     <td className="px-4 py-2">

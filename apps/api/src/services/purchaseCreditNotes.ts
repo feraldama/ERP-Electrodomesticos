@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { desglosarIvaIncluido } from "./iva.js";
+import { agruparPorCategoria } from "./accounting.js";
 
 export interface PurchaseCreditNoteItemInput {
   articleId: number;
@@ -153,13 +154,37 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
     },
   });
 
+  // Categoria de cada articulo devuelto, para imputar a su cuenta de devolucion/compra.
+  const artCat = new Map<number, number | null>();
+  if (hasItems) {
+    const arts = await prisma.article.findMany({
+      where: { id: { in: [...new Set(computed.map((c) => c.articleId))] } },
+      select: { id: true, categoryId: true },
+    });
+    for (const a of arts) artCat.set(a.id, a.categoryId ?? null);
+  }
+
   await prisma.accountingEvent.create({
     data: {
       companyId: input.companyId,
       tipo: "NOTA_CREDITO_COMPRA",
       origenTipo: "NOTA_CREDITO_COMPRA",
       origenId: nc.id,
-      payload: { nroComprobante: input.nroComprobante, fecha: nc.fecha, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
+      payload: {
+        nroComprobante: input.nroComprobante,
+        fecha: nc.fecha,
+        invoiceId: invoice.id,
+        total,
+        conStock: hasItems,
+        subtotalExenta,
+        subtotal5,
+        subtotal10,
+        iva5,
+        iva10,
+        categorias: hasItems
+          ? agruparPorCategoria(computed.map((c) => ({ categoryId: artCat.get(c.articleId) ?? null, ivaTipo: c.ivaTipo, total: c.total })))
+          : [],
+      },
     },
   });
 

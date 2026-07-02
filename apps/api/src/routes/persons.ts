@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { requireAnyPermission } from "../middleware/permission.js";
 import { rucDesdeCedula } from "../services/ruc.js";
-import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, buildWordSearch } from "../lib/listQuery.js";
 
 // /persons lo usan los 4 programas de personas (personas/clientes/proveedores/trabajadores).
 const PERSON_PROGRAMS = ["FINM001", "FINM002", "FINM003", "FINM004"];
@@ -71,14 +71,9 @@ personsRouter.get(
     const q = (req.query.q as string | undefined)?.trim();
     const role = req.query.role as string | undefined; // customer | supplier | employee
 
-    const where: Record<string, unknown> = {};
-    if (q) {
-      where.OR = [
-        { razonSocial: { contains: q, mode: "insensitive" } },
-        { nroDoc: { contains: q, mode: "insensitive" } },
-        { ruc: { contains: q, mode: "insensitive" } },
-      ];
-    }
+    const where: Record<string, unknown> = {
+      ...buildWordSearch(q, ["razonSocial", "nroDoc", "ruc"]),
+    };
     if (role === "customer") where.customer = { is: { activo: true } };
     if (role === "supplier") where.supplier = { is: { activo: true } };
     if (role === "employee") where.employee = { is: { activo: true } };
@@ -221,17 +216,7 @@ customersRouter.get(
     const customers = await prisma.customer.findMany({
       where: {
         activo: true,
-        ...(q
-          ? {
-              person: {
-                OR: [
-                  { razonSocial: { contains: q, mode: "insensitive" } },
-                  { nroDoc: { contains: q, mode: "insensitive" } },
-                  { ruc: { contains: q, mode: "insensitive" } },
-                ],
-              },
-            }
-          : {}),
+        ...buildWordSearch(q, ["person.razonSocial", "person.nroDoc", "person.ruc"]),
       },
       include: { person: true },
       orderBy: { person: { razonSocial: "asc" } },
@@ -251,17 +236,7 @@ suppliersRouter.get(
     const suppliers = await prisma.supplier.findMany({
       where: {
         activo: true,
-        ...(q
-          ? {
-              person: {
-                OR: [
-                  { razonSocial: { contains: q, mode: "insensitive" } },
-                  { nroDoc: { contains: q, mode: "insensitive" } },
-                  { ruc: { contains: q, mode: "insensitive" } },
-                ],
-              },
-            }
-          : {}),
+        ...buildWordSearch(q, ["person.razonSocial", "person.nroDoc", "person.ruc"]),
       },
       include: { person: true },
       orderBy: { person: { razonSocial: "asc" } },

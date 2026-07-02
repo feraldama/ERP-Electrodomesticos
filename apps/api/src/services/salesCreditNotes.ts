@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { devolverSeriesVenta } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
+import { agruparPorCategoria } from "./accounting.js";
 
 export interface CreditNoteItemInput {
   articleId: number;
@@ -69,14 +70,18 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
   let subtotalExenta = 0, subtotal5 = 0, subtotal10 = 0, iva5 = 0, iva10 = 0, total = 0;
   const computed: Array<{ articleId: number; cantidad: number; precioUnitario: number; ivaTipo: "IVA10" | "IVA5" | "EXENTA"; total: number; series?: string[] }> = [];
 
-  // Articulos involucrados (para saber cuales controlan serie)
+  // Articulos involucrados (para saber cuales controlan serie y su categoria contable)
   const artCtrl = new Map<number, boolean>();
+  const artCat = new Map<number, number | null>();
   if (hasItems) {
     const arts = await prisma.article.findMany({
       where: { id: { in: [...new Set(items.map((i) => i.articleId))] } },
-      select: { id: true, controlaSerie: true },
+      select: { id: true, controlaSerie: true, categoryId: true },
     });
-    for (const a of arts) artCtrl.set(a.id, a.controlaSerie);
+    for (const a of arts) {
+      artCtrl.set(a.id, a.controlaSerie);
+      artCat.set(a.id, a.categoryId ?? null);
+    }
   }
 
   if (hasItems) {
@@ -215,7 +220,21 @@ export async function createSalesCreditNote(prisma: Prisma.TransactionClient, in
       tipo: "NOTA_CREDITO_VENTA",
       origenTipo: "NOTA_CREDITO",
       origenId: nc.id,
-      payload: { numero, fecha: nc.fecha, invoiceId: invoice.id, total, conStock: hasItems, subtotalExenta, subtotal5, subtotal10, iva5, iva10 },
+      payload: {
+        numero,
+        fecha: nc.fecha,
+        invoiceId: invoice.id,
+        total,
+        conStock: hasItems,
+        subtotalExenta,
+        subtotal5,
+        subtotal10,
+        iva5,
+        iva10,
+        categorias: hasItems
+          ? agruparPorCategoria(computed.map((c) => ({ categoryId: artCat.get(c.articleId) ?? null, ivaTipo: c.ivaTipo, total: c.total })))
+          : [],
+      },
     },
   });
 

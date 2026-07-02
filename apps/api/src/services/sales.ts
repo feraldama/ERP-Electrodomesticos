@@ -1,7 +1,8 @@
-import type { MedioPago, Prisma } from "@prisma/client";
+import type { CondicionPago, MedioPago, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { consumirSeriesVenta, revertirSeriesVenta } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
+import { agruparPorCategoria } from "./accounting.js";
 
 export interface SaleItemInput {
   articleId: number;
@@ -24,6 +25,10 @@ export interface CreateSaleInput {
   observacion?: string | null;
   usuarioId?: number | null;
   items: SaleItemInput[];
+  // Condicion de la venta. Independiente de la lista de precios: si se envia,
+  // manda sobre la condicion de la lista (permite, p.ej., precios de contado
+  // financiados a credito). Si no se envia, cae a la condicion de la lista.
+  condicion?: CondicionPago;
   // Credito: nro de cuotas (override del de la lista). Contado: ignorado.
   cuotas?: number;
   // Contado: el pago total. Credito: la entrega inicial (puede ser vacio = 0).
@@ -79,7 +84,9 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
   const priceList = await prisma.priceList.findUnique({ where: { id: input.priceListId } });
   if (!priceList) throw new Error("Lista de precios invalida");
   if (!priceList.activo) throw new Error("La lista de precios esta inactiva");
-  const esCredito = priceList.condicion === "CREDITO";
+  // La condicion enviada manda; si no viene, cae a la de la lista.
+  const condicion = input.condicion ?? priceList.condicion;
+  const esCredito = condicion === "CREDITO";
 
   const cuotas = esCredito ? input.cuotas ?? priceList.cuotas : 0;
   if (esCredito && cuotas <= 0) {
@@ -90,7 +97,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
   const articleIds = [...new Set(input.items.map((i) => i.articleId))];
   const articles = await prisma.article.findMany({
     where: { id: { in: articleIds } },
-    select: { id: true, descripcion: true, rubroId: true, ivaTipo: true, costoActual: true, tipo: true, controlaSerie: true },
+    select: { id: true, descripcion: true, rubroId: true, categoryId: true, ivaTipo: true, costoActual: true, tipo: true, controlaSerie: true },
   });
   const byId = new Map(articles.map((a) => [a.id, a]));
 
@@ -229,7 +236,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
         timbrado: punto.timbrado.numero,
         tipoDocumento: punto.tipoDocumento,
         fecha: input.fecha,
-        condicion: priceList.condicion,
+        condicion,
         subtotalExenta: g.subtotalExenta,
         subtotal5: g.subtotal5,
         subtotal10: g.subtotal10,
@@ -335,7 +342,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
         payload: {
           nroComprobante,
           fecha: input.fecha,
-          condicion: priceList.condicion,
+          condicion,
           subtotalExenta: g.subtotalExenta,
           subtotal5: g.subtotal5,
           subtotal10: g.subtotal10,
@@ -345,6 +352,9 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
           entrega: entregaGrupo,
           financiado: esCredito ? financiado : 0,
           pagos: pagosGrupo,
+          categorias: agruparPorCategoria(
+            g.computed.map((c) => ({ categoryId: byId.get(c.articleId)!.categoryId ?? null, ivaTipo: c.ivaTipo, total: c.totalLinea }))
+          ),
         },
       },
     });
@@ -372,11 +382,25 @@ export interface AnularSaleInput {
 export async function anularSale(prisma: Prisma.TransactionClient, input: AnularSaleInput) {
   const invoice = await prisma.salesInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
+    include: { items: true, payments: true },
   });
   if (!invoice) throw new Error("Venta no encontrada");
   if (invoice.estado === "ANULADO") throw new Error("La venta ya esta anulada");
 
   const nroComprobante = `${invoice.establecimiento}-${invoice.puntoExpedicion}-${invoice.numero}`;
+
+  // Categoria de cada articulo, para revertir la venta contra la misma cuenta de venta.
+  const catByArticle = new Map<number, number | null>(
+    (
+      await prisma.article.findMany({
+        where: { id: { in: [...new Set(invoice.items.map((i) => i.articleId))] } },
+        select: { id: true, categoryId: true },
+      })
+    ).map((a) => [a.id, a.categoryId ?? null])
+  );
+  const categorias = agruparPorCategoria(
+    invoice.items.map((it) => ({ categoryId: catByArticle.get(it.articleId) ?? null, ivaTipo: it.ivaTipo, total: Number(it.total) }))
+  );
 
   // Guarda: notas de credito previas
   const ncCount = await prisma.salesCreditNote.count({ where: { invoiceId: invoice.id } });
@@ -447,6 +471,9 @@ export async function anularSale(prisma: Prisma.TransactionClient, input: Anular
         iva10: invoice.iva10,
         total: invoice.total,
         entrega: invoice.entregaInicial,
+        // Medios de pago de la venta: para revertir la caja/banco por el mismo medio.
+        pagos: invoice.payments.map((pg) => ({ medio: pg.medio, monto: Number(pg.monto) })),
+        categorias,
       },
     },
   });

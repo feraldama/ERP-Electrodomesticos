@@ -272,8 +272,31 @@ model Category {
   parent   Category? @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[] @relation("CategoryTree")
   articles Article[]
+  accountConfigs CategoryAccountConfig[]
 
   @@map("categories")
+}
+
+// Cuentas contables que mueve cada categoria por empresa. Como Category es un
+// catalogo global y el plan de cuentas es por empresa, la relacion se desacopla
+// aca: cada empresa define para la misma categoria que cuenta imputar en la
+// compra, la venta y la devolucion (todas opcionales).
+model CategoryAccountConfig {
+  id                 Int  @id @default(autoincrement())
+  companyId          Int
+  categoryId         Int
+  cuentaCompraId     Int?
+  cuentaVentaId      Int?
+  cuentaDevolucionId Int?
+
+  category         Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  cuentaCompra     ChartOfAccount? @relation("CatCuentaCompra", fields: [cuentaCompraId], references: [id])
+  cuentaVenta      ChartOfAccount? @relation("CatCuentaVenta", fields: [cuentaVentaId], references: [id])
+  cuentaDevolucion ChartOfAccount? @relation("CatCuentaDevolucion", fields: [cuentaDevolucionId], references: [id])
+
+  @@unique([companyId, categoryId])
+  @@index([companyId])
+  @@map("category_account_config")
 }
 
 // Rubro de facturacion: agrupa articulos para emitir cada grupo con su
@@ -1113,6 +1136,9 @@ model ChartOfAccount {
   children  ChartOfAccount[] @relation("AccountTree")
   lines     AccountingEntryLine[]
   config    AccountingConfig[]
+  categoryCompra     CategoryAccountConfig[] @relation("CatCuentaCompra")
+  categoryVenta      CategoryAccountConfig[] @relation("CatCuentaVenta")
+  categoryDevolucion CategoryAccountConfig[] @relation("CatCuentaDevolucion")
 
   @@unique([companyId, codigo])
   @@map("chart_of_accounts")

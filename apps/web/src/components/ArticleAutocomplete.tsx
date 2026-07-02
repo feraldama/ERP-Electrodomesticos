@@ -7,10 +7,15 @@ import type { Article } from "@/lib/types";
 interface Props {
   onSelect: (article: Article) => void;
   placeholder?: string;
+  // Si se indica, la busqueda solo trae articulos de ese rubro (limita segun el
+  // punto de expedicion elegido al vender).
+  rubroId?: number | null;
+  // Deshabilita la busqueda (ej. mientras no se eligio el punto de expedicion).
+  disabled?: boolean;
 }
 
 // Busqueda con debounce + dropdown + navegacion por teclado (guia UX de la skill).
-export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo por codigo o descripcion..." }: Props) {
+export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo por codigo o descripcion...", rubroId, disabled }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Article[]>([]);
   const [open, setOpen] = useState(false);
@@ -19,7 +24,7 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!q.trim()) {
+    if (disabled || !q.trim()) {
       setResults([]);
       setOpen(false);
       return;
@@ -27,7 +32,8 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await api<Article[]>(`/articles?activo=true&q=${encodeURIComponent(q)}`);
+        const rubroParam = rubroId ? `&rubroId=${rubroId}` : "";
+        const data = await api<Article[]>(`/articles?activo=true&q=${encodeURIComponent(q)}${rubroParam}`);
         setResults(data.slice(0, 8));
         setActive(0);
         setOpen(true);
@@ -38,7 +44,7 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, rubroId, disabled]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -79,7 +85,8 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
         onKeyDown={onKeyDown}
         onFocus={() => results.length > 0 && setOpen(true)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground transition-colors duration-200 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        disabled={disabled}
+        className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground transition-colors duration-200 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-muted disabled:text-slate-400"
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"

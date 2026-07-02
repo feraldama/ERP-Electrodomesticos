@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
-import type { Article, Customer, PriceList, SalesInvoice, Warehouse } from "@/lib/types";
+import type { Article, CondicionPago, Customer, PriceList, PuntoExpedicion, SalesInvoice, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
@@ -44,10 +44,13 @@ function NuevaVentaInner() {
   const { notify } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]);
+  const [puntos, setPuntos] = useState<PuntoExpedicion[]>([]);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [warehouseId, setWarehouseId] = useState("");
   const [priceListId, setPriceListId] = useState("");
+  const [condicion, setCondicion] = useState<CondicionPago>("CONTADO");
+  const [puntoId, setPuntoId] = useState("");
   const [fecha, setFecha] = useState(today());
   const [observacion, setObservacion] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -76,6 +79,11 @@ function NuevaVentaInner() {
         if (def) setPriceListId((prev) => prev || String(def.id));
       })
       .catch(() => setPriceLists([]));
+    // Puntos de expedicion activos: cada uno factura un rubro. El elegido limita
+    // los articulos que se pueden vender a los de ese rubro.
+    api<PuntoExpedicion[]>("/puntos-expedicion")
+      .then((ps) => setPuntos(ps.filter((p) => p.activo)))
+      .catch(() => setPuntos([]));
   }, [companyId]);
 
   // Precarga desde un presupuesto (?presupuesto=ID). Setea priceListId con lines
@@ -116,6 +124,38 @@ function NuevaVentaInner() {
     [priceLists, priceListId]
   );
 
+  // Punto de expedicion elegido -> fija el rubro que se puede vender.
+  const selectedPunto = useMemo(
+    () => puntos.find((p) => String(p.id) === puntoId),
+    [puntos, puntoId]
+  );
+  const rubroId = selectedPunto?.rubroId ?? null;
+
+  // Al cambiar el punto (rubro), descarta las lineas que ya no correspondan.
+  useEffect(() => {
+    if (!rubroId) return;
+    setLines((ls) => {
+      const validas = ls.filter((l) => l.article.rubro?.id === rubroId);
+      if (validas.length !== ls.length) {
+        notify("success", "Se quitaron los articulos que no corresponden al punto de expedicion");
+      }
+      return validas;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rubroId]);
+
+  // Al cargar un presupuesto (lineas ya cargadas, sin punto elegido): si todas
+  // comparten rubro y ese rubro tiene punto, lo autoselecciona.
+  useEffect(() => {
+    if (puntoId || lines.length === 0 || puntos.length === 0) return;
+    const rubrosLinea = [...new Set(lines.map((l) => l.article.rubro?.id).filter(Boolean))];
+    if (rubrosLinea.length === 1) {
+      const p = puntos.find((x) => x.rubroId === rubrosLinea[0]);
+      if (p) setPuntoId(String(p.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, puntos, puntoId]);
+
   // Resuelve el precio de un articulo en una lista (cae al precio base si no hay)
   async function resolvePrecio(a: Article, listId: string): Promise<string> {
     const base = String(Math.round(Number(a.precioVenta)) || 0);
@@ -154,6 +194,17 @@ function NuevaVentaInner() {
   }, [warehouseId]);
 
   async function addArticle(a: Article) {
+    if (!selectedPunto) {
+      notify("error", "Selecciona primero el punto de expedicion");
+      return;
+    }
+    if (a.rubro?.id !== selectedPunto.rubroId) {
+      notify(
+        "error",
+        `"${a.descripcion}" pertenece al rubro ${a.rubro?.nombre ?? "(sin rubro)"} y no corresponde al punto ${selectedPunto.codigo} (${selectedPunto.rubro?.nombre ?? "rubro"})`
+      );
+      return;
+    }
     if (lines.some((l) => l.article.id === a.id)) {
       notify("error", "El articulo ya esta en la venta");
       return;
@@ -185,13 +236,19 @@ function NuevaVentaInner() {
     return { exenta, grav5, grav10, iva5, iva10, total: exenta + grav5 + grav10 + iva5 + iva10 };
   }, [lines]);
 
-  const esCredito = selectedList?.condicion === "CREDITO";
+  // La condicion es independiente de la lista (el usuario puede overridearla).
+  const esCredito = condicion === "CREDITO";
 
-  // Al cambiar de lista, propone el nro de cuotas de la lista (editable)
+  // Al cambiar de lista, propone su condicion (editable con el selector de abajo).
   useEffect(() => {
-    if (selectedList?.condicion === "CREDITO") setCuotasInput(String(selectedList.cuotas || ""));
-    else setCuotasInput("");
+    if (selectedList) setCondicion(selectedList.condicion);
   }, [selectedList]);
+
+  // Al pasar a credito, propone el nro de cuotas de la lista (editable). En contado se limpia.
+  useEffect(() => {
+    if (esCredito) setCuotasInput(String(selectedList?.cuotas || ""));
+    else setCuotasInput("");
+  }, [esCredito, selectedList]);
 
   function setPago(key: string, value: string) {
     setPagos((p) => ({ ...p, [key]: value }));
@@ -203,13 +260,11 @@ function NuevaVentaInner() {
   const cuotaAprox = esCredito && nCuotas > 0 ? Math.floor(saldoFinanciar / nCuotas) : 0;
   const faltaContado = totals.total - pagosSum; // >0 falta, <0 sobra (solo contado)
 
-  // Cantidad de rubros distintos = cantidad de comprobantes que se emitiran
-  const rubrosDistintos = useMemo(
-    () => new Set(lines.map((l) => l.article.rubro?.nombre ?? "(sin rubro)")).size,
-    [lines]
-  );
-
   async function confirm() {
+    if (!selectedPunto) {
+      document.getElementById("punto")?.focus();
+      return notify("error", "Selecciona el punto de expedicion");
+    }
     if (!selectedCustomer) {
       document.getElementById("cli")?.focus();
       return notify("error", "Selecciona un cliente");
@@ -259,6 +314,7 @@ function NuevaVentaInner() {
             precioUnitario: Number(l.precioUnitario),
             ...(l.article.controlaSerie ? { series: l.series } : {}),
           })),
+          condicion,
           ...(esCredito ? { cuotas: nCuotas } : {}),
           payments: pagosArr,
         }),
@@ -298,6 +354,16 @@ function NuevaVentaInner() {
 
       <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Punto de expedicion (rubro)" htmlFor="punto" required>
+            <Select id="punto" value={puntoId} onChange={(e) => setPuntoId(e.target.value)}>
+              <option value="">-- Selecciona un punto --</option>
+              {puntos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.timbrado?.establecimiento ?? "001"}-{p.codigo} · {p.rubro?.nombre ?? "sin rubro"}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Cliente" htmlFor="cli" required>
             <CustomerPicker id="cli" selected={selectedCustomer} onSelect={setSelectedCustomer} onAdd={() => setAddCust(true)} />
           </Field>
@@ -308,6 +374,12 @@ function NuevaVentaInner() {
                   {l.nombre}{l.condicion === "CREDITO" ? ` (${l.cuotas} cuotas)` : ""}
                 </option>
               ))}
+            </Select>
+          </Field>
+          <Field label="Condicion de pago" htmlFor="condicion" required>
+            <Select id="condicion" value={condicion} onChange={(e) => setCondicion(e.target.value as CondicionPago)}>
+              <option value="CONTADO">Contado</option>
+              <option value="CREDITO">Credito</option>
             </Select>
           </Field>
           <Field label="Deposito (descarga stock)" htmlFor="dep" required>
@@ -327,7 +399,16 @@ function NuevaVentaInner() {
 
         <div className="mt-5">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete
+            onSelect={addArticle}
+            rubroId={rubroId}
+            disabled={!selectedPunto}
+            placeholder={
+              selectedPunto
+                ? `Buscar articulo del rubro ${selectedPunto.rubro?.nombre ?? ""}...`
+                : "Selecciona primero el punto de expedicion"
+            }
+          />
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-lg border border-border">
@@ -397,9 +478,13 @@ function NuevaVentaInner() {
         {/* Totales */}
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="text-sm">
-            {rubrosDistintos > 1 && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">
-                Hay {rubrosDistintos} rubros: se emitiran {rubrosDistintos} comprobantes (uno por rubro / punto de expedicion).
+            {selectedPunto && lines.length > 0 && (
+              <p className="rounded-lg bg-muted px-3 py-2 text-secondary">
+                Se emitira 1 comprobante en el punto{" "}
+                <span className="font-mono font-semibold">
+                  {selectedPunto.timbrado?.establecimiento ?? "001"}-{selectedPunto.codigo}
+                </span>{" "}
+                (rubro {selectedPunto.rubro?.nombre ?? "-"}).
               </p>
             )}
           </div>

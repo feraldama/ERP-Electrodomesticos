@@ -5,7 +5,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
-import { listOrPaginate } from "../lib/listQuery.js";
+import { listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
 
 // =====================================================================
 // TIMBRADOS (compartidos por empresa)
@@ -27,7 +27,7 @@ timbradosRouter.get(
     const q = (req.query.q as string | undefined)?.trim();
     const where = {
       companyId: req.companyId,
-      ...(q ? { numero: { contains: q, mode: "insensitive" as const } } : {}),
+      ...buildWordSearch(q, ["numero"]),
     };
     const include = { _count: { select: { puntos: true } } };
     res.json(
@@ -100,7 +100,7 @@ puntosExpedicionRouter.get(
     const q = (req.query.q as string | undefined)?.trim();
     const where = {
       companyId: req.companyId,
-      ...(q ? { codigo: { contains: q, mode: "insensitive" as const } } : {}),
+      ...buildWordSearch(q, ["codigo"]),
     };
     const include = {
       rubro: { select: { id: true, nombre: true } },

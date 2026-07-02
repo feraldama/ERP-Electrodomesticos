@@ -8,7 +8,7 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permission.js";
 import { UPLOADS_DIR } from "../uploads.js";
-import { parseListParams, paginated, wantsPagination, listOrPaginate } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
 
 // Catalogos simples {id, nombre, activo}: buscables por nombre y ordenables por nombre/estado.
 const simpleCatalogSortable = { nombre: "nombre", estado: "activo" } as const;
@@ -81,16 +81,13 @@ articlesRouter.get(
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string | undefined)?.trim();
     const soloActivos = req.query.activo === "true";
+    // Filtro por rubro: usado al vender para limitar los articulos al rubro del
+    // punto de expedicion elegido.
+    const rubroId = req.query.rubroId ? Number(req.query.rubroId) : undefined;
     const where = {
       ...(soloActivos ? { activo: true } : {}),
-      ...(q
-        ? {
-            OR: [
-              { codigo: { contains: q, mode: "insensitive" as const } },
-              { descripcion: { contains: q, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      ...(rubroId ? { rubroId } : {}),
+      ...buildWordSearch(q, ["codigo", "descripcion"]),
     };
     const include = { brand: true, category: true, unit: true, rubro: true };
     const { skip, take, orderBy, page, pageSize } = parseListParams(req.query, {
@@ -152,7 +149,7 @@ brandsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string | undefined)?.trim();
-    const where = q ? { nombre: { contains: q, mode: "insensitive" as const } } : {};
+    const where = buildWordSearch(q, ["nombre"]);
     res.json(
       await listOrPaginate(
         req.query,
@@ -192,7 +189,7 @@ rubrosRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string | undefined)?.trim();
-    const where = q ? { nombre: { contains: q, mode: "insensitive" as const } } : {};
+    const where = buildWordSearch(q, ["nombre"]);
     res.json(
       await listOrPaginate(
         req.query,

@@ -91,6 +91,10 @@ export interface Category {
   id: number;
   nombre: string;
   parentId: number | null;
+  // Cuentas contables de la empresa activa (null si no configuradas).
+  cuentaCompraId: number | null;
+  cuentaVentaId: number | null;
+  cuentaDevolucionId: number | null;
 }
 
 export interface Rubro {
@@ -516,6 +520,8 @@ export interface AccountingConfigRow {
   accountId: number | null;
   codigo: string | null;
   nombre: string | null;
+  // Si es opcional y no se asigna, el posting cae a CAJA (no falla).
+  opcional?: boolean;
 }
 
 // Libro IVA Compras / Ventas (CONC008 / CONC009)

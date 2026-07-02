@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createPurchase, anularPurchase } from "../services/purchases.js";
-import { parseListParams, paginated, wantsPagination } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, buildWordSearch } from "../lib/listQuery.js";
 
 export const purchasesRouter = Router();
 purchasesRouter.use(authRequired, companyRequired);
@@ -96,14 +96,7 @@ purchasesRouter.get(
     const q = (req.query.q as string | undefined)?.trim();
     const where = {
       companyId: req.companyId,
-      ...(q
-        ? {
-            OR: [
-              { nroComprobante: { contains: q, mode: "insensitive" as const } },
-              { supplier: { person: { razonSocial: { contains: q, mode: "insensitive" as const } } } },
-            ],
-          }
-        : {}),
+      ...buildWordSearch(q, ["nroComprobante", "supplier.person.razonSocial"]),
     };
     const include = { supplier: { include: { person: true } } };
     const { skip, take, orderBy, page, pageSize } = parseListParams(req.query, {
