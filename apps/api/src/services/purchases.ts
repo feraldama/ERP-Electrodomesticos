@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { IvaTipo, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { crearSeriesCompra, eliminarSeriesCompra } from "./serials.js";
@@ -113,7 +114,38 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   });
 
   // --- 2,3) Stock + costo por cada item ---
+  const loteId = randomUUID();
   for (const c of computed) {
+    // Costo Promedio Ponderado (PMP). Ponderamos el costo NETO (sin IVA, que es
+    // credito fiscal recuperable, no costo) contra la existencia total del articulo
+    // ANTES de ingresar esta linea. costoActual es global por articulo, por eso la
+    // base es la suma de saldos en TODOS los depositos, no solo el de la compra.
+    //   nuevoCosto = (existenciaPrev * costoAnterior + netoLinea) / (existenciaPrev + cantidad)
+    // Se lee fresco en cada iteracion para que dos lineas del mismo articulo en la
+    // misma factura se ponderen en cascada (la 2da sobre el resultado de la 1ra).
+    const existenciaAgg = await prisma.stockByWarehouse.aggregate({
+      where: { articleId: c.articleId },
+      _sum: { cantidad: true },
+    });
+    const existenciaPrev = Number(existenciaAgg._sum.cantidad ?? 0);
+    const art = await prisma.article.findUnique({
+      where: { id: c.articleId },
+      select: { costoActual: true },
+    });
+    const costoAnterior = Number(art?.costoActual ?? 0);
+
+    // Costo neto unitario de ESTA compra (el neto de linea repartido por unidad).
+    const costoNetoUnitario = c.cantidad !== 0 ? c.neto / c.cantidad : 0;
+    const existenciaPost = existenciaPrev + c.cantidad;
+    // Sin existencia previa util (0 o negativa) no hay promedio que ponderar: el
+    // costo pasa a ser el neto de esta compra.
+    const nuevoCosto =
+      existenciaPrev > 0 && existenciaPost > 0
+        ? (existenciaPrev * costoAnterior + c.neto) / existenciaPost
+        : costoNetoUnitario;
+    // costoActual es Decimal(18,4): redondeo determinista a 4 decimales.
+    const costoRedondeado = Math.round(nuevoCosto * 10000) / 10000;
+
     await applyStockMovement(prisma, {
       companyId: input.companyId,
       articleId: c.articleId,
@@ -123,19 +155,21 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
       costoUnitario: c.costoUnitario,
       origenTipo: "COMPRA",
       origenId: invoice.id,
+      loteId,
       observacion: `Compra ${input.nroComprobante}`,
       usuarioId: input.usuarioId ?? null,
     });
 
-    // Costo actual = ultimo costo de compra (neto) + historial
+    // Costo actual = costo promedio ponderado (neto). El historial guarda el
+    // promedio resultante despues de este ingreso.
     await prisma.article.update({
       where: { id: c.articleId },
-      data: { costoActual: c.costoUnitario },
+      data: { costoActual: costoRedondeado },
     });
     await prisma.articleCostHistory.create({
       data: {
         articleId: c.articleId,
-        costo: c.costoUnitario,
+        costo: costoRedondeado,
         moneda: input.moneda ?? "PYG",
         origenTipo: "COMPRA",
         origenId: invoice.id,
@@ -236,6 +270,7 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
   const movs = await prisma.stockMovement.findMany({
     where: { companyId: input.companyId, origenTipo: "COMPRA", origenId: invoice.id },
   });
+  const loteAnulacion = randomUUID();
   for (const m of movs) {
     await applyStockMovement(prisma, {
       companyId: input.companyId,
@@ -246,6 +281,7 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
       costoUnitario: m.costoUnitario != null ? Number(m.costoUnitario) : null,
       origenTipo: "ANULACION_COMPRA",
       origenId: invoice.id,
+      loteId: loteAnulacion,
       observacion: `Anulacion compra ${invoice.nroComprobante}`,
       usuarioId: input.usuarioId ?? null,
     });

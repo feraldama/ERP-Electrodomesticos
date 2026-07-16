@@ -251,14 +251,52 @@ export default function ListadoVentasPage() {
             )}
 
             <div className="flex items-center justify-between border-t border-border pt-4">
-              <a
-                href={`/print/venta/${detail.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Printer className="h-4 w-4" /> Imprimir
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={`/print/completo?ids=${detail.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Printer className="h-4 w-4" /> Imprimir todo
+                </a>
+                <a
+                  href={`/print/venta/${detail.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Printer className="h-4 w-4" /> Comprobante
+                </a>
+                {detail.condicion === "CREDITO" && (
+                  <a
+                    href={`/print/pagare/${detail.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Printer className="h-4 w-4" /> Pagare
+                  </a>
+                )}
+                {(Number(detail.entregaInicial) || 0) > 0 && (
+                  <a
+                    href={`/print/recibo/${detail.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Printer className="h-4 w-4" /> Recibo
+                  </a>
+                )}
+                <a
+                  href={`/print/garantia/${detail.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-secondary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Printer className="h-4 w-4" /> Certificado de garantia
+                </a>
+              </div>
               {detail.estado === "CONFIRMADO" ? (
                 <Button variant="danger" onClick={anular} loading={anulando}>
                   Anular venta

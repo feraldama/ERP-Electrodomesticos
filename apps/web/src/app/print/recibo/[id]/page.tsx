@@ -5,9 +5,9 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Printer } from "lucide-react";
-import { ComprobanteDoc, type SaleFull } from "@/components/print/saleDocs";
+import { ReciboDoc, aplicaRecibo, type SaleFull } from "@/components/print/saleDocs";
 
-export default function VentaPrintPage() {
+export default function ReciboPrintPage() {
   const params = useParams<{ id: string }>();
   const { user, companyId } = useAuth();
   const [v, setV] = useState<SaleFull | null>(null);
@@ -18,14 +18,15 @@ export default function VentaPrintPage() {
     api<SaleFull>(`/sales/${params.id}`).then(setV).catch(() => setError(true));
   }, [params.id]);
 
+  const empresa = user?.companies.find((c) => c.id === companyId) ?? user?.companies[0];
+  const hayEntrega = !!v && aplicaRecibo(v);
+
   useEffect(() => {
-    if (!v || printed.current) return;
+    if (!v || printed.current || !hayEntrega) return;
     printed.current = true;
     const t = setTimeout(() => window.print(), 300);
     return () => clearTimeout(t);
-  }, [v]);
-
-  const empresa = user?.companies.find((c) => c.id === companyId) ?? user?.companies[0];
+  }, [v, hayEntrega]);
 
   if (error) return <div className="p-10 text-center text-slate-500">No se pudo cargar la venta.</div>;
   if (!v) return <div className="p-10 text-center text-slate-400">Cargando...</div>;
@@ -43,7 +44,13 @@ export default function VentaPrintPage() {
         </div>
       </div>
       <div className="print-page mx-auto max-w-3xl bg-white p-8 text-sm text-slate-800">
-        <ComprobanteDoc v={v} empresa={empresa} />
+        {hayEntrega ? (
+          <ReciboDoc v={v} empresa={empresa} />
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-300 py-8 text-center text-slate-500">
+            Esta venta no registra entrega inicial; no hay recibo de dinero.
+          </div>
+        )}
       </div>
     </div>
   );

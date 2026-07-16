@@ -12,10 +12,12 @@ interface Props {
   rubroId?: number | null;
   // Deshabilita la busqueda (ej. mientras no se eligio el punto de expedicion).
   disabled?: boolean;
+  // Permite al padre acceder al input de busqueda (ej. para devolverle el focus).
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 // Busqueda con debounce + dropdown + navegacion por teclado (guia UX de la skill).
-export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo por codigo o descripcion...", rubroId, disabled }: Props) {
+export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo por codigo o descripcion...", rubroId, disabled, inputRef }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Article[]>([]);
   const [open, setOpen] = useState(false);
@@ -80,6 +82,7 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
   return (
     <div ref={boxRef} className="relative">
       <input
+        ref={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={onKeyDown}

@@ -382,6 +382,8 @@ model Article {
   ivaTipo       IvaTipo  @default(IVA10)
   // controla numeros de serie / IMEI por unidad
   controlaSerie Boolean  @default(false)
+  // meses de garantia del articulo (0 = sin garantia). Se usa para el certificado de garantia al vender.
+  garantiaMeses Int      @default(0)
   costoActual   Decimal  @default(0) @db.Decimal(18, 4)
   precioVenta   Decimal  @default(0) @db.Decimal(18, 4)
   stockMinimo   Decimal  @default(0) @db.Decimal(18, 4)
@@ -472,6 +474,10 @@ model StockMovement {
   // referencia al documento de origen
   origenTipo    String?  // COMPRA, VENTA, AJUSTE, TRANSFERENCIA, DEVOLUCION
   origenId      Int?
+  // Identifica todas las lineas creadas en una misma operacion (una transferencia,
+  // un ajuste, una compra, una venta, una nota de credito). Permite agrupar el kardex
+  // por "movimiento" sin depender de la fecha (Prisma genera now() por fila).
+  loteId        String?  @db.Uuid
   observacion   String?
   fecha         DateTime @default(now())
   usuarioId     Int?
@@ -479,6 +485,7 @@ model StockMovement {
   article       Article  @relation(fields: [articleId], references: [id])
 
   @@index([companyId, articleId])
+  @@index([companyId, loteId])
   @@map("stock_movements")
 }
 

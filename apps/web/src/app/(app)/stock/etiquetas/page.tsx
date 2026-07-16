@@ -7,6 +7,7 @@ import type { Article, ArticleBarcode } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Barcode } from "@/components/ui/Barcode";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { useToast } from "@/components/ui/Toast";
 import { Printer, Trash2, Tag } from "lucide-react";
 
@@ -21,6 +22,7 @@ export default function EtiquetasPage() {
   const [items, setItems] = useState<LabelItem[]>([]);
   const [mostrarPrecio, setMostrarPrecio] = useState(true);
   const [mostrarNombre, setMostrarNombre] = useState(true);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   async function addArticle(a: Article) {
     if (items.some((i) => i.article.id === a.id)) {
@@ -37,6 +39,7 @@ export default function EtiquetasPage() {
       /* usa el codigo del articulo */
     }
     setItems((prev) => [...prev, { article: a, barcodeValue, cantidad: 1 }]);
+    focusQty(a.id);
   }
 
   function setCantidad(id: number, cantidad: number) {
@@ -69,7 +72,7 @@ export default function EtiquetasPage() {
       <div className="mb-5 rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="max-w-lg">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
         </div>
 
         <div className="mt-4 flex flex-wrap gap-5">
@@ -98,6 +101,8 @@ export default function EtiquetasPage() {
                     type="number"
                     min={1}
                     value={i.cantidad}
+                    ref={registerQty(i.article.id)}
+                    onKeyDown={qtyTabToSearch}
                     onChange={(e) => setCantidad(i.article.id, Math.max(1, Number(e.target.value) || 1))}
                     className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />

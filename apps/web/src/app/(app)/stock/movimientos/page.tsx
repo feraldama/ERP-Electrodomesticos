@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { formatGs } from "@/lib/format";
 import type { Article, StockRow, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +27,7 @@ export default function TransferenciaStockPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [disponible, setDisponible] = useState<Record<number, number>>({});
   const [saving, setSaving] = useState(false);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -60,6 +62,7 @@ export default function TransferenciaStockPage() {
       return;
     }
     setLines((ls) => [...ls, { article: a, cantidad: "1" }]);
+    focusQty(a.id);
   }
   function updateLine(id: number, cantidad: string) {
     setLines((ls) => ls.map((l) => (l.article.id === id ? { ...l, cantidad } : l)));
@@ -138,7 +141,7 @@ export default function TransferenciaStockPage() {
 
         <div className="mt-5">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-lg border border-border">
@@ -167,7 +170,9 @@ export default function TransferenciaStockPage() {
                       <td className={`px-3 py-2 text-right font-mono ${disp <= 0 ? "text-destructive" : "text-slate-600"}`}>{formatGs(disp)}</td>
                       <td className="px-3 py-2 text-right">
                         <input type="number" min={0} value={l.cantidad}
+                          ref={registerQty(l.article.id)}
                           onChange={(e) => updateLine(l.article.id, e.target.value)}
+                          onKeyDown={qtyTabToSearch}
                           className={`w-24 rounded-lg border px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${excede ? "border-destructive" : "border-border focus:border-primary"}`} />
                       </td>
                       <td className="px-3 py-2 text-right">

@@ -10,6 +10,7 @@ import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal } from "@/components/QuickCreateModal";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { Trash2 } from "lucide-react";
 
 interface Line {
@@ -27,6 +28,7 @@ export default function AjustesPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [addWh, setAddWh] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -44,6 +46,7 @@ export default function AjustesPage() {
       return;
     }
     setLines((ls) => [...ls, { article: a, tipo: "INGRESO", cantidad: "1" }]);
+    focusQty(a.id);
   }
 
   function updateLine(id: number, patch: Partial<Line>) {
@@ -121,7 +124,7 @@ export default function AjustesPage() {
         {/* Buscador para agregar articulos */}
         <div className="mt-5">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
         </div>
 
         {/* Lineas */}
@@ -163,7 +166,9 @@ export default function AjustesPage() {
                         type="number"
                         min={0}
                         value={l.cantidad}
+                        ref={registerQty(l.article.id)}
                         onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
+                        onKeyDown={qtyTabToSearch}
                         className="w-24 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </td>

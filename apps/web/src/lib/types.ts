@@ -147,6 +147,60 @@ export interface StockRow {
   warehouse: { id: number; codigo: string; nombre: string };
 }
 
+// Fila del tab "Resumido" de Stock por deposito (STKC009): una fila por articulo,
+// con la existencia total (suma de depositos dentro del alcance).
+export interface StockSummaryRow {
+  articleId: number;
+  codigo: string;
+  descripcion: string;
+  existencia: number;
+  stockMinimo: number;
+}
+
+// Fila de "Costo promedio con existencias" (STKC030): existencia total, costo
+// promedio actual y valorizado (existencia x costo) por articulo.
+export interface CostExistenceRow {
+  articleId: number;
+  codigo: string;
+  descripcion: string;
+  marca: string | null;
+  existencia: number;
+  costo: number;
+  valorizado: number;
+}
+
+export type StockMovTipo = "INGRESO" | "EGRESO" | "TRANSFERENCIA" | "AJUSTE";
+
+// Fila del historial de movimientos de stock / kardex (STKC012)
+export interface StockMovementRow {
+  id: number;
+  fecha: string;
+  tipo: StockMovTipo;
+  cantidad: string;
+  costoUnitario: string | null;
+  origenTipo: string | null;
+  observacion: string | null;
+  article: { id: number; codigo: string; descripcion: string };
+  origen: { id: number; codigo: string; nombre: string } | null;
+  destino: { id: number; codigo: string; nombre: string } | null;
+  usuario: string | null;
+}
+
+// Fila agrupada del historial (STKC012): un "movimiento" = todas las lineas creadas
+// en la misma operacion, identificadas por `loteId`. Al abrir un lote se piden sus
+// lineas (StockMovementRow) filtrando por ese `loteId`.
+export interface StockMovementBatchRow {
+  loteId: string; // identifica el lote; se usa para pedir el detalle de las lineas
+  fecha: string;
+  tipo: StockMovTipo;
+  origen: { id: number; codigo: string; nombre: string } | null;
+  destino: { id: number; codigo: string; nombre: string } | null;
+  usuario: string | null;
+  observacion: string | null;
+  articulos: number; // cantidad de lineas (articulos distintos movidos)
+  cantidadTotal: string; // suma de cantidades del lote
+}
+
 // --- Consultas de compras/costos ---
 export interface PurchaseHistoryRow {
   fecha: string;
@@ -653,6 +707,7 @@ export interface Article {
   tipo: ArticleTipo;
   ivaTipo: IvaTipo;
   controlaSerie: boolean;
+  garantiaMeses: number; // meses de garantia del articulo (0 = sin garantia)
   costoActual: string; // Decimal serializado como string
   precioVenta: string;
   stockMinimo: string;

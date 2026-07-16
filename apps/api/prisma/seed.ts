@@ -37,6 +37,8 @@ const MODULES: Array<{
       { codigo: "STKC009", nombre: "Stock por deposito", categoria: "CONSULTAS", ruta: "/stock/consulta-stock" },
       { codigo: "STKL010", nombre: "Ultimas compras por articulo", categoria: "LISTADOS", ruta: "/stock/ultimas-compras" },
       { codigo: "STKC011", nombre: "Historial de costos", categoria: "CONSULTAS", ruta: "/stock/costos" },
+      { codigo: "STKC012", nombre: "Historial de movimientos", categoria: "CONSULTAS", ruta: "/stock/movimientos-historial" },
+      { codigo: "STKC030", nombre: "Costo promedio con existencias", categoria: "CONSULTAS", ruta: "/stock/costo-existencias" },
     ],
   },
   {

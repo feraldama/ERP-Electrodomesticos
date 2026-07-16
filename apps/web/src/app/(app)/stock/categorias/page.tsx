@@ -40,7 +40,7 @@ export default function CategoriasPage() {
     const cuenta = (id: number | null) => (id ? accountLabel.get(id) ?? "—" : "—");
     return [
       { header: "Categoria", sortKey: "nombre", render: (c) => <span className="font-medium text-foreground">{c.nombre}</span> },
-      { header: "Compra", render: (c) => <span className="text-sm text-secondary">{cuenta(c.cuentaCompraId)}</span> },
+      { header: "Mercaderia", render: (c) => <span className="text-sm text-secondary">{cuenta(c.cuentaCompraId)}</span> },
       { header: "Venta", render: (c) => <span className="text-sm text-secondary">{cuenta(c.cuentaVentaId)}</span> },
       { header: "Devolucion", render: (c) => <span className="text-sm text-secondary">{cuenta(c.cuentaDevolucionId)}</span> },
     ];
@@ -49,7 +49,7 @@ export default function CategoriasPage() {
   const fields: FieldDef[] = useMemo(
     () => [
       { key: "nombre", label: "Nombre", required: true, colSpan: 2 },
-      { key: "cuentaCompraId", label: "Cuenta de compra", type: "select", numeric: true, colSpan: 2, options: accountOptions },
+      { key: "cuentaCompraId", label: "Cuenta de mercaderia", type: "select", numeric: true, colSpan: 2, options: accountOptions },
       { key: "cuentaVentaId", label: "Cuenta de venta", type: "select", numeric: true, colSpan: 2, options: accountOptions },
       { key: "cuentaDevolucionId", label: "Cuenta de devolucion", type: "select", numeric: true, colSpan: 2, options: accountOptions },
     ],

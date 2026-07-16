@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { desglosarIvaIncluido } from "@/lib/iva";
 import { Trash2, Ban, Printer } from "lucide-react";
 
@@ -47,6 +48,7 @@ export default function PresupuestoPage() {
   const [observacion, setObservacion] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   const [lista, setLista] = useState<SalesQuote[]>([]);
   const [detalle, setDetalle] = useState<SalesQuote | null>(null);
@@ -95,6 +97,7 @@ export default function PresupuestoPage() {
     if (lines.some((l) => l.article.id === a.id)) return notify("error", "El articulo ya esta en el presupuesto");
     const precio = await resolvePrecio(a, priceListId);
     setLines((ls) => [...ls, { article: a, cantidad: "1", precioUnitario: precio }]);
+    focusQty(a.id);
   }
   function updateLine(id: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l) => (l.article.id === id ? { ...l, ...patch } : l)));
@@ -195,7 +198,7 @@ export default function PresupuestoPage() {
 
         <div className="mt-5">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-lg border border-border">
@@ -221,7 +224,7 @@ export default function PresupuestoPage() {
                       <div className="font-mono text-xs text-slate-400">{l.article.codigo}</div>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <input type="number" min={0} value={l.cantidad} onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
+                      <input type="number" min={0} value={l.cantidad} ref={registerQty(l.article.id)} onKeyDown={qtyTabToSearch} onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
                         className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
                     </td>
                     <td className="px-3 py-2 text-right">

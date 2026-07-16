@@ -9,6 +9,7 @@ export interface StockMovementInput {
   costoUnitario?: number | null;
   origenTipo?: string | null; // COMPRA, VENTA, AJUSTE, TRANSFERENCIA, DEVOLUCION
   origenId?: number | null;
+  loteId?: string | null; // agrupa las lineas de una misma operacion (uuid)
   observacion?: string | null;
   usuarioId?: number | null;
 }
@@ -33,6 +34,7 @@ export async function applyStockMovement(
     costoUnitario = null,
     origenTipo = null,
     origenId = null,
+    loteId = null,
     observacion = null,
     usuarioId = null,
   } = input;
@@ -56,6 +58,7 @@ export async function applyStockMovement(
       costoUnitario,
       origenTipo,
       origenId,
+      loteId,
       observacion,
       usuarioId,
     },
@@ -68,6 +71,7 @@ export interface TransferInput {
   fromWarehouseId: number;
   toWarehouseId: number;
   cantidad: number; // positivo
+  loteId?: string | null; // agrupa las lineas de una misma transferencia (uuid)
   observacion?: string | null;
   usuarioId?: number | null;
 }
@@ -110,6 +114,7 @@ export async function applyTransfer(tx: Prisma.TransactionClient, input: Transfe
       tipo: "TRANSFERENCIA",
       cantidad,
       origenTipo: "TRANSFERENCIA",
+      loteId: input.loteId ?? null,
       observacion: input.observacion ?? null,
       usuarioId: input.usuarioId ?? null,
     },

@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal, type QuickKind } from "@/components/QuickCreateModal";
 import { useListQuery } from "@/lib/useListQuery";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 
 type FormValue = string | boolean;
 type FormValues = Record<string, FormValue>;
@@ -49,6 +50,10 @@ interface CrudManagerProps<T extends { id: number }> {
   defaultSort?: string; // clave de orden inicial del backend (default "nombre")
   reloadKey?: unknown; // fuerza recarga al cambiar (ej empresa activa)
   feminine?: boolean; // concordancia de genero (default true: marca/categoria)
+  // Habilita eliminar (boton en el modal de edicion). El backend valida si se puede.
+  deletable?: boolean;
+  // Descripcion de la fila para el dialogo de confirmacion (default: su id).
+  describeRow?: (row: T) => string;
   // Catalogo creado inline desde un field con quickAdd: la pagina agrega la opcion a su lista.
   onCatalogCreated?: (fieldKey: string, item: { id: number } & Record<string, unknown>) => void;
 }
@@ -67,12 +72,16 @@ export function CrudManager<T extends { id: number }>({
   defaultSort = "nombre",
   reloadKey,
   feminine = true,
+  deletable = false,
+  describeRow,
   onCatalogCreated,
 }: CrudManagerProps<T>) {
   const { notify } = useToast();
+  const confirm = useConfirm();
   const nuevo = feminine ? "Nueva" : "Nuevo";
   const creada = feminine ? "creada" : "creado";
   const actualizada = feminine ? "actualizada" : "actualizado";
+  const eliminada = feminine ? "eliminada" : "eliminado";
 
   const list = useListQuery<T>(endpoint, { defaultSort, reloadKey });
 
@@ -173,6 +182,31 @@ export function CrudManager<T extends { id: number }>({
     }
   }
 
+  async function remove() {
+    if (!editing) return;
+    const desc = describeRow?.(editing);
+    const ok = await confirm({
+      title: `Eliminar ${entityName}`,
+      description: desc
+        ? `Vas a eliminar "${desc}". Esta accion no se puede deshacer.`
+        : `Vas a eliminar ${feminine ? "esta" : "este"} ${entityName}. Esta accion no se puede deshacer.`,
+      confirmText: "Eliminar",
+      danger: true,
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await api(`${endpoint}/${editing.id}`, { method: "DELETE" });
+      notify("success", `${cap(entityName)} ${eliminada}`);
+      setOpen(false);
+      list.reload();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "No se pudo eliminar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function set(key: string, value: FormValue) {
     setForm((f) => ({ ...f, [key]: value }));
     setDirty(true);
@@ -240,6 +274,11 @@ export function CrudManager<T extends { id: number }>({
         confirmClose={dirty}
         footer={
           <>
+            {editing && deletable && (
+              <Button variant="danger" type="button" onClick={remove} loading={saving} className="mr-auto">
+                <Trash2 className="h-4 w-4" /> Eliminar
+              </Button>
+            )}
             <Button variant="secondary" type="button" onClick={() => setOpen(false)}>
               Cancelar
             </Button>

@@ -16,6 +16,7 @@ import { SerialPicker } from "@/components/SerialPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { desglosarIvaIncluido } from "@/lib/iva";
 import { Trash2 } from "lucide-react";
 
@@ -39,6 +40,17 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Suma n meses a una fecha yyyy-mm-dd y devuelve yyyy-mm-dd (fecha local, sin TZ).
+function addMonthsStr(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setMonth(date.getMonth() + n);
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 function NuevaVentaInner() {
   const { companyId } = useAuth();
   const { notify } = useToast();
@@ -54,15 +66,23 @@ function NuevaVentaInner() {
   const [fecha, setFecha] = useState(today());
   const [observacion, setObservacion] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
+  // Existencia actual (cantidad en el deposito elegido) por articleId, para mostrarla
+  // en cada linea. Se recarga al cambiar de deposito o el conjunto de articulos.
+  const [stockMap, setStockMap] = useState<Record<number, number>>({});
   const [pagos, setPagos] = useState<Record<string, string>>({});
   const [cuotasInput, setCuotasInput] = useState("");
+  // Fecha de vencimiento de cada cuota (yyyy-mm-dd). Se regenera al cambiar el nro de
+  // cuotas o la fecha de la venta; el usuario puede editar cada una.
+  const [vencimientos, setVencimientos] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
   const [addCust, setAddCust] = useState(false);
   const [serialPickerArticle, setSerialPickerArticle] = useState<number | null>(null);
   const [quoteId, setQuoteId] = useState<number | null>(null);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
   const searchParams = useSearchParams();
   const prefilledRef = useRef(false);
+  const puntoFocusedRef = useRef(false);
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -118,6 +138,15 @@ function NuevaVentaInner() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, priceLists.length]);
+
+  // Al cargar la pagina, el foco va al Punto de expedicion (rubro). Se espera a que los
+  // puntos esten cargados (el Select puede ser nativo o combobox con buscador, ambos con
+  // id="punto") y solo se hace una vez, sin pisar un presupuesto ya precargado.
+  useEffect(() => {
+    if (puntoFocusedRef.current || puntos.length === 0 || puntoId) return;
+    puntoFocusedRef.current = true;
+    document.getElementById("punto")?.focus();
+  }, [puntos, puntoId]);
 
   const selectedList = useMemo(
     () => priceLists.find((l) => String(l.id) === priceListId),
@@ -193,6 +222,35 @@ function NuevaVentaInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warehouseId]);
 
+  // Existencia en el deposito elegido para los articulos de las lineas. Se recalcula
+  // al cambiar de deposito o el conjunto de articulos (no al editar cantidades).
+  const lineArticleIds = useMemo(() => lines.map((l) => l.article.id).join(","), [lines]);
+  useEffect(() => {
+    if (!warehouseId) return setStockMap({});
+    const ids = lineArticleIds ? lineArticleIds.split(",").map(Number) : [];
+    if (ids.length === 0) return setStockMap({});
+    let cancel = false;
+    (async () => {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const rows = await api<Array<{ cantidad: string | number }>>(
+              `/stock?warehouseId=${warehouseId}&articleId=${id}`
+            );
+            return [id, rows.reduce((s, r) => s + Number(r.cantidad), 0)] as const;
+          } catch {
+            return [id, 0] as const;
+          }
+        })
+      );
+      if (!cancel) setStockMap(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancel = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId, lineArticleIds]);
+
   async function addArticle(a: Article) {
     if (!selectedPunto) {
       notify("error", "Selecciona primero el punto de expedicion");
@@ -211,6 +269,8 @@ function NuevaVentaInner() {
     }
     const precio = await resolvePrecio(a, priceListId);
     setLines((ls) => [...ls, { article: a, cantidad: a.controlaSerie ? "0" : "1", precioUnitario: precio, series: [] }]);
+    // Los articulos con serie no tienen input de cantidad (se define por las series).
+    if (!a.controlaSerie) focusQty(a.id);
   }
 
   function updateLine(id: number, patch: Partial<Line>) {
@@ -257,8 +317,51 @@ function NuevaVentaInner() {
   const nCuotas = Number(cuotasInput) || 0;
   // En credito el pago es la entrega; el saldo se financia. En contado el pago = total.
   const saldoFinanciar = esCredito ? Math.max(0, totals.total - pagosSum) : 0;
-  const cuotaAprox = esCredito && nCuotas > 0 ? Math.floor(saldoFinanciar / nCuotas) : 0;
+  // La cuota "plena" se calcula sobre el total (no sobre el saldo financiado); la
+  // entrega se imputa despues a las primeras cuotas.
+  const cuotaAprox = esCredito && nCuotas > 0 ? Math.floor(totals.total / nCuotas) : 0;
   const faltaContado = totals.total - pagosSum; // >0 falta, <0 sobra (solo contado)
+
+  // Regenera los vencimientos por defecto (fecha + i meses) al cambiar el nro de cuotas
+  // o la fecha. Cualquier edicion manual se pierde al cambiar esos parametros (el
+  // cronograma cambia). En contado se limpian.
+  useEffect(() => {
+    if (!esCredito || nCuotas < 1) {
+      setVencimientos([]);
+      return;
+    }
+    setVencimientos(Array.from({ length: nCuotas }, (_, i) => addMonthsStr(fecha, i + 1)));
+  }, [esCredito, nCuotas, fecha]);
+
+  // Edita el vencimiento de la cuota i. Si es la primera, re-basa todo el cronograma
+  // (cuota 1 = fecha elegida, y cada cuota siguiente = esa fecha + N meses). El resto
+  // de las cuotas solo cambian la propia.
+  function setVencimiento(i: number, value: string) {
+    setVencimientos((vs) =>
+      i === 0 && value
+        ? vs.map((_, j) => addMonthsStr(value, j))
+        : vs.map((x, j) => (j === i ? value : x))
+    );
+  }
+
+  // Cronograma de cuotas (espejo del backend): las cuotas se calculan sobre el TOTAL y
+  // la entrega se imputa de la primera cuota en adelante (cancela las primeras y amortiza
+  // parcialmente la siguiente). Cada cuota expone su monto, lo imputado, el saldo y estado.
+  const cronograma = useMemo(() => {
+    if (!esCredito || nCuotas < 1) return [];
+    const base = Math.floor(totals.total / nCuotas);
+    let entregaRest = pagosSum;
+    return Array.from({ length: nCuotas }, (_, idx) => {
+      const i = idx + 1;
+      const montoCuota = i < nCuotas ? base : totals.total - base * (nCuotas - 1);
+      const pagado = Math.min(entregaRest, montoCuota);
+      entregaRest -= pagado;
+      const saldo = montoCuota - pagado;
+      const estado: "PAGADA" | "PARCIAL" | "PENDIENTE" =
+        pagado >= montoCuota ? "PAGADA" : pagado > 0 ? "PARCIAL" : "PENDIENTE";
+      return { montoCuota, pagado, saldo, estado };
+    });
+  }, [esCredito, nCuotas, totals.total, pagosSum]);
 
   async function confirm() {
     if (!selectedPunto) {
@@ -296,6 +399,9 @@ function NuevaVentaInner() {
     } else {
       if (nCuotas < 1) return notify("error", "Indica la cantidad de cuotas");
       if (pagosSum > totals.total) return notify("error", "La entrega no puede superar el total");
+      if (saldoFinanciar > 0 && vencimientos.some((v) => !v)) {
+        return notify("error", "Completa la fecha de vencimiento de todas las cuotas");
+      }
     }
 
     setSaving(true);
@@ -315,7 +421,7 @@ function NuevaVentaInner() {
             ...(l.article.controlaSerie ? { series: l.series } : {}),
           })),
           condicion,
-          ...(esCredito ? { cuotas: nCuotas } : {}),
+          ...(esCredito ? { cuotas: nCuotas, vencimientos } : {}),
           payments: pagosArr,
         }),
       });
@@ -326,6 +432,13 @@ function NuevaVentaInner() {
           ? `Venta registrada en ${invoices.length} comprobantes: ${nros}`
           : `Venta registrada: ${nros}`
       );
+      // Imprime automaticamente sin pasar por el listado. IMPORTANTE: se abre UNA SOLA
+      // pestaña con todos los documentos (comprobante + pagare + recibo + garantia, cada
+      // uno segun corresponda) y saltos de pagina. Abrir varias pestañas con window.open
+      // seguidos hace que el navegador bloquee todas menos la primera (por eso antes solo
+      // salia el comprobante). /print/completo arma el documento unico y lanza la impresion.
+      const ids = invoices.map((inv) => inv.id).join(",");
+      window.open(`/print/completo?ids=${ids}`, "_blank");
       if (quoteId) {
         try { await api(`/presupuestos/${quoteId}/convertir`, { method: "POST" }); } catch { /* noop */ }
         setQuoteId(null);
@@ -401,6 +514,7 @@ function NuevaVentaInner() {
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
           <ArticleAutocomplete
             onSelect={addArticle}
+            inputRef={searchRef}
             rubroId={rubroId}
             disabled={!selectedPunto}
             placeholder={
@@ -433,6 +547,23 @@ function NuevaVentaInner() {
                     <td className="px-3 py-2">
                       <div className="text-foreground">{l.article.descripcion}</div>
                       <div className="font-mono text-xs text-slate-500">{l.article.codigo}</div>
+                      {warehouseId && (
+                        <div className="text-xs">
+                          {stockMap[l.article.id] == null ? (
+                            <span className="text-slate-400">Stock: …</span>
+                          ) : (
+                            <span
+                              className={
+                                Number(l.cantidad) > stockMap[l.article.id]
+                                  ? "font-medium text-destructive"
+                                  : "text-slate-500"
+                              }
+                            >
+                              Stock: {formatGs(stockMap[l.article.id])}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {l.article.controlaSerie && (
                         <button
                           type="button"
@@ -451,6 +582,8 @@ function NuevaVentaInner() {
                         </span>
                       ) : (
                         <input type="number" min={0} value={l.cantidad}
+                          ref={registerQty(l.article.id)}
+                          onKeyDown={qtyTabToSearch}
                           onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
                           className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
                       )}
@@ -568,6 +701,48 @@ function NuevaVentaInner() {
                 </>
               )}
             </div>
+
+            {/* Cronograma de cuotas: vencimiento editable por cuota */}
+            {esCredito && nCuotas > 0 && saldoFinanciar > 0 && vencimientos.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <h3 className="mb-2 text-sm font-semibold text-secondary">Vencimiento de las cuotas</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {vencimientos.map((v, i) => {
+                    const c = cronograma[i];
+                    const pagada = c?.estado === "PAGADA";
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                          pagada ? "border-border bg-muted/40" : "border-border bg-white"
+                        }`}
+                      >
+                        <span className="w-16 shrink-0 text-xs font-medium text-slate-500">Cuota {i + 1}</span>
+                        <input
+                          type="date"
+                          value={v}
+                          onChange={(e) => setVencimiento(i, e.target.value)}
+                          disabled={pagada}
+                          className="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted disabled:text-slate-400"
+                        />
+                        <span className="flex shrink-0 flex-col items-end leading-tight">
+                          <span
+                            className={`font-mono text-xs font-medium ${pagada ? "text-slate-400 line-through" : "text-foreground"}`}
+                          >
+                            {formatGs(c?.saldo ?? 0)}
+                          </span>
+                          {c && c.estado !== "PENDIENTE" && (
+                            <span className={`text-[10px] font-semibold ${pagada ? "text-emerald-600" : "text-amber-600"}`}>
+                              {pagada ? "Pagada" : "Parcial"}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

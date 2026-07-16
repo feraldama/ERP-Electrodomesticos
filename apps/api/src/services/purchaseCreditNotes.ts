@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { desglosarIvaIncluido } from "./iva.js";
@@ -126,6 +127,7 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
 
   // Egreso de stock (los articulos vuelven al proveedor)
   if (hasItems) {
+    const loteId = randomUUID();
     for (const c of computed) {
       await applyStockMovement(prisma, {
         companyId: input.companyId,
@@ -136,6 +138,7 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
         costoUnitario: c.costoUnitario,
         origenTipo: "NOTA_CREDITO_COMPRA",
         origenId: nc.id,
+        loteId,
         observacion: `NC compra ${input.nroComprobante}`,
         usuarioId: input.usuarioId ?? null,
       });

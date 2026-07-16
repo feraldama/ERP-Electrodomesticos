@@ -26,6 +26,7 @@ const articleSchema = z.object({
   tipo: z.enum(["PRODUCTO", "SERVICIO"]).default("PRODUCTO"),
   ivaTipo: z.enum(["IVA10", "IVA5", "EXENTA"]).default("IVA10"),
   controlaSerie: z.boolean().default(false),
+  garantiaMeses: z.number().int().nonnegative().default(0),
   costoActual: z.number().nonnegative().default(0),
   precioVenta: z.number().nonnegative().default(0),
   stockMinimo: z.number().nonnegative().default(0),

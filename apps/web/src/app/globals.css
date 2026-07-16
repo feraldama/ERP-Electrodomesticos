@@ -86,3 +86,21 @@ body {
     width: 100%;
   }
 }
+
+/* Documentos de venta a pagina completa (/print/venta, /pagare, /recibo, /garantia,
+   /completo). Como la regla de arriba oculta todo el body al imprimir, hay que volver
+   a hacer visible el contenido del documento. Cada .print-page es una hoja. */
+@media print {
+  #print-doc,
+  #print-doc * {
+    visibility: visible;
+  }
+  .print-page {
+    page-break-after: always;
+    break-after: page;
+  }
+  .print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

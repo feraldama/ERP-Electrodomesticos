@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { CondicionPago, MedioPago, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { consumirSeriesVenta, revertirSeriesVenta } from "./serials.js";
@@ -31,6 +32,9 @@ export interface CreateSaleInput {
   condicion?: CondicionPago;
   // Credito: nro de cuotas (override del de la lista). Contado: ignorado.
   cuotas?: number;
+  // Credito: fecha de vencimiento de cada cuota (ISO/yyyy-mm-dd), en orden. Si no
+  // viene o falta alguna, esa cuota cae al default (fecha de la venta + N meses).
+  vencimientos?: string[];
   // Contado: el pago total. Credito: la entrega inicial (puede ser vacio = 0).
   payments?: SalePaymentInput[];
 }
@@ -263,6 +267,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
     });
 
     // Descarga de stock (egreso) por cada item PRODUCTO (los SERVICIO no mueven stock)
+    const loteId = randomUUID();
     for (const c of g.computed) {
       const art = byId.get(c.articleId);
       if (art?.tipo === "SERVICIO") continue;
@@ -275,6 +280,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
         costoUnitario: c.costoActual,
         origenTipo: "VENTA",
         origenId: invoice.id,
+        loteId,
         observacion: `Venta ${nroComprobante}`,
         usuarioId: input.usuarioId ?? null,
       });
@@ -305,17 +311,34 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
       });
 
       if (financiado > 0) {
-        const cuotaBase = Math.floor(financiado / cuotas);
+        // Las cuotas se calculan sobre el TOTAL del comprobante (no sobre el saldo
+        // financiado). La entrega inicial se imputa de la PRIMERA cuota en adelante:
+        // cancela por completo las primeras y amortiza parcialmente la siguiente, en
+        // vez de repartirse por igual bajando el monto de todas.
+        const cuotaBase = Math.floor(g.total / cuotas);
+        let entregaRestante = entregaGrupo;
         for (let i = 1; i <= cuotas; i++) {
           // La ultima cuota absorbe el redondeo para que la suma cierre exacta.
-          const montoCuota = i < cuotas ? cuotaBase : financiado - cuotaBase * (cuotas - 1);
+          const montoCuota = i < cuotas ? cuotaBase : g.total - cuotaBase * (cuotas - 1);
+          // Imputacion de la entrega a esta cuota (de la primera hacia adelante).
+          const montoPagado = Math.min(entregaRestante, montoCuota);
+          entregaRestante -= montoPagado;
+          const estado: "PAGADA" | "PARCIAL" | "PENDIENTE" =
+            montoPagado >= montoCuota ? "PAGADA" : montoPagado > 0 ? "PARCIAL" : "PENDIENTE";
+          // Vencimiento elegido por el usuario (si vino y es valido); si no, default.
+          const vencInput = input.vencimientos?.[i - 1];
+          const vencParsed = vencInput ? new Date(vencInput) : null;
+          const fechaVencimiento =
+            vencParsed && !Number.isNaN(vencParsed.getTime()) ? vencParsed : addMonths(input.fecha, i);
           await prisma.installment.create({
             data: {
               companyId: input.companyId,
               invoiceId: invoice.id,
               nroCuota: i,
-              fechaVencimiento: addMonths(input.fecha, i),
+              fechaVencimiento,
               montoCuota,
+              montoPagado,
+              estado,
             },
           });
         }
@@ -406,17 +429,20 @@ export async function anularSale(prisma: Prisma.TransactionClient, input: Anular
   const ncCount = await prisma.salesCreditNote.count({ where: { invoiceId: invoice.id } });
   if (ncCount > 0) throw new Error("La venta tiene notas de credito; no se puede anular");
 
-  // Guarda: cobros aplicados a sus cuotas
-  const cuotaPagada = await prisma.installment.findFirst({
-    where: { invoiceId: invoice.id, montoPagado: { gt: 0 } },
+  // Guarda: cobros reales aplicados a sus cuotas. Se detectan por la existencia de
+  // InstallmentPayment (cobros posteriores), NO por montoPagado > 0: la entrega inicial
+  // ya deja las primeras cuotas con montoPagado, y esa se revierte junto con la venta.
+  const cobroAplicado = await prisma.installmentPayment.findFirst({
+    where: { installment: { invoiceId: invoice.id } },
     select: { id: true },
   });
-  if (cuotaPagada) throw new Error("La venta tiene cobros aplicados; revertilos antes de anular");
+  if (cobroAplicado) throw new Error("La venta tiene cobros aplicados; revertilos antes de anular");
 
   // 1) Reingreso de stock: invierte cada movimiento de la venta
   const movs = await prisma.stockMovement.findMany({
     where: { companyId: input.companyId, origenTipo: "VENTA", origenId: invoice.id },
   });
+  const loteAnulacion = randomUUID();
   for (const m of movs) {
     await applyStockMovement(prisma, {
       companyId: input.companyId,
@@ -427,6 +453,7 @@ export async function anularSale(prisma: Prisma.TransactionClient, input: Anular
       costoUnitario: m.costoUnitario != null ? Number(m.costoUnitario) : null,
       origenTipo: "ANULACION_VENTA",
       origenId: invoice.id,
+      loteId: loteAnulacion,
       observacion: `Anulacion venta ${nroComprobante}`,
       usuarioId: input.usuarioId ?? null,
     });

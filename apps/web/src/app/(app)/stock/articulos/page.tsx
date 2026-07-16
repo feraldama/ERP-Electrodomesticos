@@ -26,6 +26,7 @@ interface FormState {
   tipo: "PRODUCTO" | "SERVICIO";
   ivaTipo: "IVA10" | "IVA5" | "EXENTA";
   controlaSerie: boolean;
+  garantiaMeses: string;
   costoActual: string;
   precioVenta: string;
   stockMinimo: string;
@@ -43,6 +44,7 @@ const EMPTY_FORM: FormState = {
   tipo: "PRODUCTO",
   ivaTipo: "IVA10",
   controlaSerie: false,
+  garantiaMeses: "0",
   costoActual: "0",
   precioVenta: "0",
   stockMinimo: "0",
@@ -142,6 +144,7 @@ export default function ArticulosPage() {
       tipo: a.tipo,
       ivaTipo: a.ivaTipo,
       controlaSerie: a.controlaSerie,
+      garantiaMeses: a.garantiaMeses?.toString() ?? "0",
       costoActual: a.costoActual,
       precioVenta: a.precioVenta,
       stockMinimo: a.stockMinimo,
@@ -187,6 +190,7 @@ export default function ArticulosPage() {
       tipo: form.tipo,
       ivaTipo: form.ivaTipo,
       controlaSerie: form.controlaSerie,
+      garantiaMeses: Number(form.garantiaMeses) || 0,
       costoActual: Number(form.costoActual) || 0,
       precioVenta: Number(form.precioVenta) || 0,
       stockMinimo: Number(form.stockMinimo) || 0,
@@ -363,6 +367,11 @@ export default function ArticulosPage() {
 
           <Field label="Stock minimo" htmlFor="stockmin">
             <Input id="stockmin" type="number" min={0} value={form.stockMinimo} onChange={(e) => set("stockMinimo", e.target.value)} />
+          </Field>
+
+          <Field label="Meses de garantia" htmlFor="garantia">
+            <Input id="garantia" type="number" min={0} step={1} value={form.garantiaMeses} onChange={(e) => set("garantiaMeses", e.target.value)} />
+            <p className="mt-1 text-xs text-slate-400">0 = sin garantia. Se imprime en el certificado al vender.</p>
           </Field>
           <div className="flex items-end">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-secondary">

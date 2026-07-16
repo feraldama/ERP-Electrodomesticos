@@ -35,6 +35,8 @@ export default function DepositosPage() {
       defaultSort="codigo"
       reloadKey={companyId}
       feminine={false}
+      deletable
+      describeRow={(w) => `${w.codigo} - ${w.nombre}`}
     />
   );
 }

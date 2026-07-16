@@ -14,6 +14,7 @@ import { SupplierPicker } from "@/components/SupplierPicker";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
+import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
 import { desglosarIvaIncluido } from "@/lib/iva";
 import { Trash2 } from "lucide-react";
 
@@ -49,6 +50,7 @@ export default function CargarCompraPage() {
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
   const [addSup, setAddSup] = useState(false);
+  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -68,6 +70,8 @@ export default function CargarCompraPage() {
       ...ls,
       { article: a, cantidad: a.controlaSerie ? "0" : "1", costoUnitario: a.costoActual ?? "0", ivaTipo: a.ivaTipo, series: "" },
     ]);
+    // Los articulos con serie no tienen input de cantidad (se define por las series).
+    if (!a.controlaSerie) focusQty(a.id);
   }
 
   function updateLine(id: number, patch: Partial<Line>) {
@@ -179,7 +183,7 @@ export default function CargarCompraPage() {
         {/* Agregar articulos */}
         <div className="mt-5">
           <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} />
+          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
         </div>
 
         {/* Detalle */}
@@ -229,6 +233,8 @@ export default function CargarCompraPage() {
                         </span>
                       ) : (
                         <input type="number" min={0} value={l.cantidad}
+                          ref={registerQty(l.article.id)}
+                          onKeyDown={qtyTabToSearch}
                           onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
                           className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
                       )}

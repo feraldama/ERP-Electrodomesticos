@@ -1,6 +1,7 @@
-import { forwardRef } from "react";
+import { Children, forwardRef, isValidElement, type ReactNode } from "react";
 import * as LabelPrimitive from "@radix-ui/react-label";
 import { cn } from "@/lib/cn";
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/SearchSelect";
 
 // Estilo base de inputs (shadcn/ui adaptado a slate + verde)
 const inputBase =
@@ -52,11 +53,72 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
   }
 );
 
-// Select nativo estilizado: el chevron viene de la clase global .field-select (globals.css)
+// A partir de esta cantidad de opciones, el Select se vuelve un combobox con buscador
+// (filtra por cualquier palabra). Por debajo se comporta como <select> nativo. Ver la
+// regla en apps/web/CLAUDE.md ("Selects").
+const SEARCH_THRESHOLD = 8;
+
+// Aplana el contenido de una <option> a texto (soporta labels compuestos como
+// `{codigo} - {nombre}`, que llegan como varios hijos).
+function optionText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(optionText).join("");
+  if (isValidElement(node)) return optionText((node.props as { children?: ReactNode }).children);
+  return "";
+}
+
+// Extrae {value,label} de los hijos <option>/<optgroup> para alimentar al buscador.
+function optionsFromChildren(children: ReactNode): SearchSelectOption[] {
+  const out: SearchSelectOption[] = [];
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    if (child.type === "option") {
+      const props = child.props as { value?: string | number; children?: ReactNode };
+      out.push({ value: String(props.value ?? ""), label: optionText(props.children).trim() });
+    } else if (child.type === "optgroup") {
+      out.push(...optionsFromChildren((child.props as { children?: ReactNode }).children));
+    }
+  });
+  return out;
+}
+
+// Select estilizado. Si la lista es larga (> SEARCH_THRESHOLD) se convierte
+// automaticamente en un combobox con buscador; si no, es un <select> nativo (el chevron
+// viene de la clase global .field-select en globals.css). Misma API en ambos casos:
+// `value` + `onChange(e => e.target.value)` con hijos <option>.
 export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className, children, ...rest }, ref) {
+  function Select({ className, children, value, onChange, onBlur, id, disabled, ...rest }, ref) {
+    const options = optionsFromChildren(children);
+
+    if (options.length > SEARCH_THRESHOLD) {
+      return (
+        <SearchSelect
+          id={id}
+          className={className}
+          value={String(value ?? "")}
+          options={options}
+          disabled={disabled}
+          onChange={(v) =>
+            // Se emula el evento nativo: los call-sites solo leen e.target.value.
+            onChange?.({ target: { value: v }, currentTarget: { value: v } } as unknown as React.ChangeEvent<HTMLSelectElement>)
+          }
+          onBlur={onBlur ? () => onBlur({} as unknown as React.FocusEvent<HTMLSelectElement>) : undefined}
+        />
+      );
+    }
+
     return (
-      <select ref={ref} className={cn(inputBase, "field-select cursor-pointer", className)} {...rest}>
+      <select
+        ref={ref}
+        id={id}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        disabled={disabled}
+        className={cn(inputBase, "field-select cursor-pointer", className)}
+        {...rest}
+      >
         {children}
       </select>
     );

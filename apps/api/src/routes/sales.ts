@@ -270,6 +270,9 @@ const saleSchema = z.object({
   condicion: z.enum(["CONTADO", "CREDITO"]).optional(),
   // Credito: nro de cuotas (override del de la lista)
   cuotas: z.number().int().positive().optional(),
+  // Credito: fecha de vencimiento de cada cuota (yyyy-mm-dd), en orden. Si no viene o
+  // falta alguna, esa cuota cae al default (fecha de la venta + N meses).
+  vencimientos: z.array(z.string()).optional(),
   // Contado: pago total. Credito: entrega inicial (puede ir vacio)
   payments: z
     .array(
@@ -309,6 +312,7 @@ salesRouter.post(
           items: d.items,
           condicion: d.condicion,
           cuotas: d.cuotas,
+          vencimientos: d.vencimientos,
           payments: d.payments,
         })
       );
@@ -382,6 +386,40 @@ salesRouter.get(
     });
     if (!invoice) throw new HttpError(404, "Venta no encontrada");
     res.json(invoice);
+  })
+);
+
+// Datos para el certificado de garantia de una venta: cabecera + items con la
+// cantidad de meses de garantia de cada articulo y los numeros de serie vendidos.
+salesRouter.get(
+  "/:id/garantia",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const invoice = await prisma.salesInvoice.findFirst({
+      where: { id, companyId: req.companyId },
+      include: {
+        customer: { include: { person: true } },
+        items: {
+          include: {
+            article: {
+              select: { id: true, codigo: true, descripcion: true, garantiaMeses: true, controlaSerie: true },
+            },
+          },
+        },
+      },
+    });
+    if (!invoice) throw new HttpError(404, "Venta no encontrada");
+
+    // Numeros de serie que salieron con esta venta, agrupados por articulo.
+    const serials = await prisma.articleSerial.findMany({
+      where: { saleInvoiceId: id },
+      select: { articleId: true, serie: true },
+      orderBy: { serie: "asc" },
+    });
+    const serialsByArticle: Record<number, string[]> = {};
+    for (const s of serials) (serialsByArticle[s.articleId] ??= []).push(s.serie);
+
+    res.json({ ...invoice, serialsByArticle });
   })
 );
 

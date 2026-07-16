@@ -5,30 +5,32 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Printer } from "lucide-react";
-import { ComprobanteDoc, type SaleFull } from "@/components/print/saleDocs";
+import { GarantiaDoc, aplicaGarantia, type GarantiaFull } from "@/components/print/saleDocs";
 
-export default function VentaPrintPage() {
+export default function GarantiaPrintPage() {
   const params = useParams<{ id: string }>();
   const { user, companyId } = useAuth();
-  const [v, setV] = useState<SaleFull | null>(null);
+  const [g, setG] = useState<GarantiaFull | null>(null);
   const [error, setError] = useState(false);
   const printed = useRef(false);
 
   useEffect(() => {
-    api<SaleFull>(`/sales/${params.id}`).then(setV).catch(() => setError(true));
+    api<GarantiaFull>(`/sales/${params.id}/garantia`).then(setG).catch(() => setError(true));
   }, [params.id]);
 
+  const empresa = user?.companies.find((c) => c.id === companyId) ?? user?.companies[0];
+  const tieneGarantia = aplicaGarantia(g);
+
+  // Auto-impresion solo si hay articulos con garantia.
   useEffect(() => {
-    if (!v || printed.current) return;
+    if (!g || printed.current || !tieneGarantia) return;
     printed.current = true;
     const t = setTimeout(() => window.print(), 300);
     return () => clearTimeout(t);
-  }, [v]);
-
-  const empresa = user?.companies.find((c) => c.id === companyId) ?? user?.companies[0];
+  }, [g, tieneGarantia]);
 
   if (error) return <div className="p-10 text-center text-slate-500">No se pudo cargar la venta.</div>;
-  if (!v) return <div className="p-10 text-center text-slate-400">Cargando...</div>;
+  if (!g) return <div className="p-10 text-center text-slate-400">Cargando...</div>;
 
   return (
     <div id="print-doc">
@@ -43,7 +45,13 @@ export default function VentaPrintPage() {
         </div>
       </div>
       <div className="print-page mx-auto max-w-3xl bg-white p-8 text-sm text-slate-800">
-        <ComprobanteDoc v={v} empresa={empresa} />
+        {tieneGarantia ? (
+          <GarantiaDoc g={g} empresa={empresa} />
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-300 py-8 text-center text-slate-500">
+            Esta venta no incluye articulos con garantia.
+          </div>
+        )}
       </div>
     </div>
   );
