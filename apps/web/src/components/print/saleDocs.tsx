@@ -405,6 +405,108 @@ export function ReciboDoc({ v, empresa }: { v: SaleFull; empresa?: Empresa }) {
 }
 
 // =====================================================================
+// RECIBO DE DINERO — formato TICKET 80mm (impresora termica)
+// =====================================================================
+// Mismo contenido que ReciboDoc pero maquetado en una columna angosta (~72mm de
+// contenido dentro de un rollo de 80mm). Va en un trabajo de impresion separado con
+// @page { size: 80mm auto } (ver /print/recibo). Todo en texto chico y monoespaciado.
+export function ReciboTicketDoc({ v, empresa }: { v: SaleFull; empresa?: Empresa }) {
+  const nro = `${v.establecimiento}-${v.puntoExpedicion}-${v.numero}`;
+  const entrega = Number(v.entregaInicial);
+  const enLetras = `Guaranies ${numeroALetras(entrega)}`.toUpperCase();
+  const cli = v.customer.person;
+  const medios = (v.payments ?? []).filter((p) => Number(p.monto) > 0);
+  const saldo = Number(v.total) - entrega;
+
+  return (
+    <div className="mx-auto w-[72mm] font-mono text-[11px] leading-tight text-black">
+      {v.estado === "ANULADO" && (
+        <div className="mb-2 border border-black py-1 text-center text-xs font-bold uppercase tracking-widest">
+          Anulado
+        </div>
+      )}
+
+      {/* Encabezado */}
+      <div className="text-center">
+        <div className="text-sm font-bold uppercase">{empresa?.razonSocial ?? "Empresa"}</div>
+        {empresa?.nombreFantasia && <div>{empresa.nombreFantasia}</div>}
+        <div className="mt-1 font-bold uppercase tracking-wide">Recibo de dinero</div>
+      </div>
+
+      <Dashed />
+
+      <Row2 l="Fecha" r={fmtFecha(v.fecha)} />
+      <Row2 l="Venta N" r={nro} />
+
+      <Dashed />
+
+      {/* Cliente */}
+      <div>
+        <div className="font-bold uppercase">Cliente</div>
+        <div>{cli.razonSocial}</div>
+        <div>C.I./RUC: {cli.ruc ?? cli.nroDoc}</div>
+      </div>
+
+      <Dashed />
+
+      {/* Monto recibido */}
+      <div className="text-center">
+        <div className="uppercase">Recibimos</div>
+        <div className="text-lg font-bold">{formatGs(entrega)} Gs</div>
+      </div>
+      <div className="mt-1 text-center text-[10px]">{enLetras}</div>
+
+      <Dashed />
+
+      <div className="text-[10px]">
+        En concepto de entrega inicial de la venta a credito N {nro}.
+      </div>
+
+      {medios.length > 0 && (
+        <>
+          <Dashed />
+          <div className="font-bold uppercase">Forma de pago</div>
+          {medios.map((p) => (
+            <Row2 key={p.id} l={MEDIO_PAGO_LABEL[p.medio]} r={`${formatGs(p.monto)} Gs`} />
+          ))}
+        </>
+      )}
+
+      <Dashed />
+
+      <Row2 l="Total venta" r={`${formatGs(v.total)} Gs`} />
+      <Row2 l="Entrega" r={`${formatGs(entrega)} Gs`} />
+      <div className="mt-0.5 flex justify-between border-t border-black pt-0.5 font-bold">
+        <span>Saldo</span>
+        <span>{formatGs(saldo)} Gs</span>
+      </div>
+
+      <div className="mt-10 text-center text-[10px]">
+        <div className="mx-auto w-4/5 border-t border-black pt-1">Firma y sello</div>
+        <div className="font-bold">{empresa?.razonSocial ?? "Empresa"}</div>
+      </div>
+
+      <div className="mt-3 text-center text-[9px]">¡Gracias por su pago!</div>
+    </div>
+  );
+}
+
+// Separador punteado a lo ancho del ticket.
+function Dashed() {
+  return <div className="my-1 border-t border-dashed border-black" />;
+}
+
+// Fila etiqueta izquierda / valor derecha, para el ticket.
+function Row2({ l, r }: { l: string; r: string }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="shrink-0">{l}</span>
+      <span className="text-right">{r}</span>
+    </div>
+  );
+}
+
+// =====================================================================
 // CERTIFICADO DE GARANTIA
 // =====================================================================
 export function GarantiaDoc({ g, empresa }: { g: GarantiaFull; empresa?: Empresa }) {

@@ -8,10 +8,8 @@ import { Printer } from "lucide-react";
 import {
   ComprobanteDoc,
   PagareDoc,
-  ReciboDoc,
   GarantiaDoc,
   aplicaPagare,
-  aplicaRecibo,
   aplicaGarantia,
   type SaleFull,
   type GarantiaFull,
@@ -84,13 +82,13 @@ function CompletoInner() {
   if (error) return <div className="p-10 text-center text-slate-500">No se pudieron cargar los documentos.</div>;
   if (!bundles) return <div className="p-10 text-center text-slate-400">Cargando...</div>;
 
-  // Arma la lista de hojas a imprimir en orden: por cada comprobante, comprobante ->
-  // pagare -> recibo -> garantia (segun corresponda).
+  // Arma la lista de hojas A4 a imprimir en orden: por cada comprobante, comprobante ->
+  // pagare -> garantia (segun corresponda). El recibo de dinero NO va aca: se imprime
+  // aparte como ticket 80mm (/print/recibo) para poder mandarlo a la impresora termica.
   const pages: React.ReactNode[] = [];
   bundles.forEach((b, i) => {
     pages.push(<ComprobanteDoc key={`comp-${i}`} v={b.venta} empresa={empresa} />);
     if (aplicaPagare(b.venta)) pages.push(<PagareDoc key={`pag-${i}`} v={b.venta} empresa={empresa} />);
-    if (aplicaRecibo(b.venta)) pages.push(<ReciboDoc key={`rec-${i}`} v={b.venta} empresa={empresa} />);
     if (aplicaGarantia(b.garantia)) pages.push(<GarantiaDoc key={`gar-${i}`} g={b.garantia!} empresa={empresa} />);
   });
 

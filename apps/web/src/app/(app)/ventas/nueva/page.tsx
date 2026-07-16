@@ -432,13 +432,20 @@ function NuevaVentaInner() {
           ? `Venta registrada en ${invoices.length} comprobantes: ${nros}`
           : `Venta registrada: ${nros}`
       );
-      // Imprime automaticamente sin pasar por el listado. IMPORTANTE: se abre UNA SOLA
-      // pestaña con todos los documentos (comprobante + pagare + recibo + garantia, cada
-      // uno segun corresponda) y saltos de pagina. Abrir varias pestañas con window.open
-      // seguidos hace que el navegador bloquee todas menos la primera (por eso antes solo
-      // salia el comprobante). /print/completo arma el documento unico y lanza la impresion.
+      // Imprime automaticamente sin pasar por el listado. El comprobante + pagare +
+      // garantia salen juntos en A4 (/print/completo, un solo trabajo). El recibo de dinero
+      // se abre en una pestaña APARTE como ticket 80mm (/print/recibo) para poder mandarlo
+      // a la impresora termica. Abrir 2 pestañas requiere permitir las ventanas emergentes
+      // del sitio en el navegador (ver aviso al usuario); si estan bloqueadas, el navegador
+      // avisa con el icono de popup bloqueado en la barra de direcciones.
       const ids = invoices.map((inv) => inv.id).join(",");
       window.open(`/print/completo?ids=${ids}`, "_blank");
+      // Recibo(s) de entrega inicial en ticket 80mm, uno por comprobante que la tenga.
+      if (esCredito && pagosSum > 0) {
+        invoices
+          .filter((inv) => Number(inv.entregaInicial) > 0)
+          .forEach((inv) => window.open(`/print/recibo/${inv.id}`, "_blank"));
+      }
       if (quoteId) {
         try { await api(`/presupuestos/${quoteId}/convertir`, { method: "POST" }); } catch { /* noop */ }
         setQuoteId(null);
