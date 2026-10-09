@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { formatGs } from "@/lib/format";
+import { formatGs, hoyYmd } from "@/lib/format";
 import type { Customer, MedioPago, PendingInstallment } from "@/lib/types";
 import { MEDIO_PAGO_LABEL } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +13,7 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");

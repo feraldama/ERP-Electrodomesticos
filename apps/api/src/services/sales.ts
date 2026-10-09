@@ -3,7 +3,7 @@ import type { CondicionPago, MedioPago, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { consumirSeriesVenta, revertirSeriesVenta } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
 
 export interface SaleItemInput {
   articleId: number;
@@ -84,6 +84,9 @@ function allocate(amount: number, weights: number[]): number[] {
  * Devuelve la lista de comprobantes generados (uno por rubro).
  */
 export async function createSale(prisma: Prisma.TransactionClient, input: CreateSaleInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   // --- Lista de precios -> condicion y nro de cuotas ---
   const priceList = await prisma.priceList.findUnique({ where: { id: input.priceListId } });
   if (!priceList) throw new Error("Lista de precios invalida");
@@ -392,6 +395,10 @@ export interface AnularSaleInput {
   companyId: number;
   invoiceId: number;
   usuarioId?: number | null;
+  motivoAnulacionId?: number | null;
+  observacion?: string | null;
+  /** La factura anulada figura en el Libro IVA Ventas (con montos en 0). */
+  enLibroIva?: boolean;
 }
 
 /**
@@ -403,6 +410,9 @@ export interface AnularSaleInput {
  * aplicados (alguna cuota con montoPagado > 0).
  */
 export async function anularSale(prisma: Prisma.TransactionClient, input: AnularSaleInput) {
+  // La reversa se fecha hoy: el ejercicio de hoy debe estar abierto.
+  await assertPeriodoAbierto(prisma, input.companyId, new Date());
+
   const invoice = await prisma.salesInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
     include: { items: true, payments: true },
@@ -506,7 +516,17 @@ export async function anularSale(prisma: Prisma.TransactionClient, input: Anular
   });
 
   // 5) Estado
-  await prisma.salesInvoice.update({ where: { id: invoice.id }, data: { estado: "ANULADO" } });
+  await prisma.salesInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      estado: "ANULADO",
+      anuladoAt: new Date(),
+      anuladoPorId: input.usuarioId ?? null,
+      motivoAnulacionId: input.motivoAnulacionId ?? null,
+      observacionAnulacion: input.observacion || null,
+      anuladoEnLibroIva: input.enLibroIva ?? false,
+    },
+  });
 
   return { id: invoice.id, nroComprobante, estado: "ANULADO" as const };
 }

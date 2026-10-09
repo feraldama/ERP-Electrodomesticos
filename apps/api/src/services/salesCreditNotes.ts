@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { devolverSeriesVenta } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
 
 export interface CreditNoteItemInput {
   articleId: number;
@@ -47,6 +47,9 @@ function allocate(amount: number, weights: number[]): number[] {
  * encola el evento contable. Devuelve la NC creada.
  */
 export async function createSalesCreditNote(prisma: Prisma.TransactionClient, input: CreateSalesCreditNoteInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   const invoice = await prisma.salesInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
     include: { items: true },

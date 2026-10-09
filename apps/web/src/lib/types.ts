@@ -133,6 +133,14 @@ export interface PuntoExpedicion {
   timbrado?: { id: number; numero: string; establecimiento: string; activo: boolean };
 }
 
+export interface Branch {
+  id: number;
+  codigo: string; // establecimiento SIFEN
+  nombre: string;
+  direccion: string | null;
+  activo: boolean;
+}
+
 export interface Warehouse {
   id: number;
   codigo: string;
@@ -271,6 +279,23 @@ export interface Supplier {
   id: number;
   activo: boolean;
   person: Person;
+}
+
+export type TipoTimbrado = "PREIMPRESO" | "AUTOIMPRESOR" | "ELECTRONICO";
+
+export interface SupplierTimbrado {
+  id: number;
+  supplierId: number;
+  numero: string;
+  tipoDocumento: "FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO" | "REMISION";
+  establecimiento: string;
+  puntoExpedicion: string;
+  fechaInicio: string;
+  fechaVencimiento: string;
+  numeroInicial: number | null;
+  numeroFinal: number | null;
+  tipo: TipoTimbrado | null;
+  activo: boolean;
 }
 
 export interface PurchaseItem {

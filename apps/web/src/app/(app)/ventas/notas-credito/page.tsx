@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs, IVA_LABEL } from "@/lib/format";
+import { formatGs, IVA_LABEL, hoyYmd } from "@/lib/format";
 import type { CreditableInvoice, CreditableItem, SalesInvoice, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Search } from "lucide-react";
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");

@@ -7,6 +7,8 @@ import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSale, anularSale } from "../services/sales.js";
 import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
+import { contabilizar } from "../lib/contabilizar.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // LISTAS DE PRECIOS (compartidas entre empresas, como el catalogo)
@@ -306,7 +308,7 @@ salesRouter.post(
           customerId: d.customerId,
           priceListId: d.priceListId,
           warehouseId: d.warehouseId,
-          fecha: new Date(d.fecha),
+          fecha: parseFechaDoc(d.fecha),
           observacion: d.observacion ?? null,
           usuarioId: req.auth?.userId ?? null,
           items: d.items,
@@ -323,6 +325,7 @@ salesRouter.post(
       throw err;
     }
 
+    await contabilizar(res, companyId, invoices.map((i) => ({ origenTipo: "VENTA", origenId: i.id })));
     res.status(201).json({ invoices });
   })
 );
@@ -436,6 +439,7 @@ salesRouter.post(
           usuarioId: req.auth?.userId ?? null,
         })
       );
+      await contabilizar(res, req.companyId!, [{ origenTipo: "ANULACION_VENTA", origenId: result.id }]);
       res.json(result);
     } catch (err) {
       if (err instanceof HttpError) throw err;

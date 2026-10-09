@@ -6,6 +6,8 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createPurchaseCreditNote } from "../services/purchaseCreditNotes.js";
+import { contabilizar } from "../lib/contabilizar.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // NOTAS DE CREDITO DE COMPRA (recibidas; con o sin devolucion de stock)
@@ -99,7 +101,7 @@ notasCreditoCompraRouter.post(
           companyId,
           invoiceId: d.invoiceId,
           nroComprobante: d.nroComprobante.trim(),
-          fecha: new Date(d.fecha),
+          fecha: parseFechaDoc(d.fecha),
           motivo: d.motivo ?? null,
           usuarioId: req.auth?.userId ?? null,
           warehouseId: d.warehouseId,
@@ -113,6 +115,7 @@ notasCreditoCompraRouter.post(
       throw err;
     }
 
+    await contabilizar(res, companyId, [{ origenTipo: "NOTA_CREDITO_COMPRA", origenId: nc.id }]);
     res.status(201).json(nc);
   })
 );

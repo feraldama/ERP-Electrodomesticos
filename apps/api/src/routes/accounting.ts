@@ -5,7 +5,9 @@ import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
-import { processPendingEvents, getAccountBalances, cerrarEjercicio, CLAVES, CLAVES_OPCIONALES } from "../services/accounting.js";
+import { diaContable, parseFechaDoc, parseRange, ymdToUtc } from "../lib/fechas.js";
+import { cuentasReclasificables, reclasificar } from "../services/reclasificacion.js";
+import { enColaContable, postPendingEvents, processPendingEvents, getAccountBalances, cerrarEjercicio, CLAVES, CLAVES_OPCIONALES } from "../services/accounting.js";
 
 // =====================================================================
 // CONTABILIDAD: plan de cuentas, libro diario y procesamiento de eventos
@@ -160,6 +162,8 @@ contabilidadRouter.put(
       update: { accountId: d.accountId },
       create: { companyId: req.companyId!, clave: d.clave, accountId: d.accountId },
     });
+    // Con la cuenta corregida, reintenta los asientos que habian quedado pendientes.
+    await postPendingEvents(req.companyId!);
     res.json(row);
   })
 );
@@ -170,13 +174,6 @@ contabilidadRouter.put(
 // asientos asigna cada asiento a su periodo por fecha y rechaza postear sobre uno
 // cerrado (ver services/accounting.ts).
 // =====================================================================
-
-// Fecha YYYY-MM-DD -> Date al inicio (00:00) o fin (23:59:59.999) del dia local.
-function ymdToDate(s: string, end: boolean): Date {
-  const d = new Date(`${s}T${end ? "23:59:59.999" : "00:00:00"}`);
-  if (Number.isNaN(d.getTime())) throw new HttpError(400, "Fecha invalida (use YYYY-MM-DD)");
-  return d;
-}
 
 const periodSchema = z.object({
   nombre: z.string().min(1),
@@ -225,8 +222,8 @@ contabilidadRouter.post(
   requirePermission("CONM011"),
   asyncHandler(async (req, res) => {
     const d = periodSchema.parse(req.body);
-    const inicio = ymdToDate(d.fechaInicio, false);
-    const fin = ymdToDate(d.fechaFin, true);
+    const inicio = ymdToUtc(d.fechaInicio, false);
+    const fin = ymdToUtc(d.fechaFin, true);
     await validarSolape(req.companyId!, inicio, fin);
     const periodo = await prisma.fiscalPeriod.create({
       data: { companyId: req.companyId!, nombre: d.nombre.trim(), fechaInicio: inicio, fechaFin: fin },
@@ -260,8 +257,8 @@ contabilidadRouter.put(
     if (cambiaFechas && periodo._count.entries > 0)
       throw new HttpError(409, "No se pueden cambiar las fechas: el ejercicio ya tiene asientos asignados");
 
-    const inicio = d.fechaInicio ? ymdToDate(d.fechaInicio, false) : periodo.fechaInicio;
-    const fin = d.fechaFin ? ymdToDate(d.fechaFin, true) : periodo.fechaFin;
+    const inicio = d.fechaInicio ? ymdToUtc(d.fechaInicio, false) : periodo.fechaInicio;
+    const fin = d.fechaFin ? ymdToUtc(d.fechaFin, true) : periodo.fechaFin;
     if (cambiaFechas) await validarSolape(req.companyId!, inicio, fin, id);
 
     const updated = await prisma.fiscalPeriod.update({
@@ -272,6 +269,8 @@ contabilidadRouter.put(
         ...(d.cerrado !== undefined ? { cerrado: d.cerrado } : {}),
       },
     });
+    // Reabrir un ejercicio habilita los asientos que estaban trabados por el cierre.
+    if (d.cerrado === false) await postPendingEvents(req.companyId!);
     res.json(updated);
   })
 );
@@ -301,7 +300,7 @@ contabilidadRouter.post(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw new HttpError(404, "Ejercicio no encontrado");
-    const result = await cerrarEjercicio(req.companyId!, id);
+    const result = await enColaContable(req.companyId!, () => cerrarEjercicio(req.companyId!, id));
     res.json(result);
   })
 );
@@ -330,6 +329,31 @@ contabilidadRouter.post(
   asyncHandler(async (req, res) => {
     const result = await processPendingEvents(req.companyId!);
     res.json(result);
+  })
+);
+
+// Reclasificacion de cuentas (CONP012): cuentas con saldo a la fecha + destino sugerido.
+contabilidadRouter.get(
+  "/reclasificacion",
+  asyncHandler(async (req, res) => {
+    const fecha = req.query.fecha ? parseFechaDoc(String(req.query.fecha)) : diaContable(new Date());
+    res.json(await cuentasReclasificables(req.companyId!, ymdToUtc(fecha.toISOString().slice(0, 10), true)));
+  })
+);
+
+const reclasificacionSchema = z.object({
+  fecha: z.string().min(1),
+  glosa: z.string().max(200).nullable().optional(),
+  items: z.array(z.object({ origenId: z.number().int(), destinoId: z.number().int() })).min(1),
+});
+
+contabilidadRouter.post(
+  "/reclasificacion",
+  requirePermission("CONP012"),
+  asyncHandler(async (req, res) => {
+    const d = reclasificacionSchema.parse(req.body);
+    const result = await reclasificar({ companyId: req.companyId!, fecha: parseFechaDoc(d.fecha), glosa: d.glosa, items: d.items });
+    res.status(201).json(result);
   })
 );
 
@@ -472,27 +496,24 @@ contabilidadRouter.get(
 // del periodo. No genera asientos; solo lee.
 // =====================================================================
 
-// Rango de fechas opcional desde/hasta (YYYY-MM-DD), hasta inclusive.
-function parseRange(req: { query: Record<string, unknown> }) {
-  const toDate = (v: unknown, end: boolean) => {
-    if (!v) return undefined;
-    const s = String(v);
-    const d = new Date(`${s}T${end ? "23:59:59.999" : "00:00:00"}`);
-    if (Number.isNaN(d.getTime())) throw new HttpError(400, "Fecha invalida (use YYYY-MM-DD)");
-    return d;
-  };
-  const desde = toDate(req.query.desde, false);
-  const hasta = toDate(req.query.hasta, true);
-  const fecha: { gte?: Date; lte?: Date } = {};
-  if (desde) fecha.gte = desde;
-  if (hasta) fecha.lte = hasta;
-  return Object.keys(fecha).length ? fecha : undefined;
-}
-
 const n = (v: unknown) => Number(v ?? 0);
 const neg = (v: unknown) => -Number(v ?? 0);
 
 type LibroAmounts = { gravada10: number; gravada5: number; exenta: number; iva10: number; iva5: number; total: number };
+
+type MontosDoc = { estado: string; subtotal10: unknown; subtotal5: unknown; subtotalExenta: unknown; iva10: unknown; iva5: unknown; total: unknown };
+
+function montosLibro(f: MontosDoc) {
+  const v = (x: unknown) => (f.estado === "ANULADO" ? 0 : n(x));
+  return {
+    gravada10: v(f.subtotal10),
+    gravada5: v(f.subtotal5),
+    exenta: v(f.subtotalExenta),
+    iva10: v(f.iva10),
+    iva5: v(f.iva5),
+    total: v(f.total),
+  };
+}
 
 function totalsOf(filas: LibroAmounts[]): LibroAmounts {
   const keys: Array<keyof LibroAmounts> = ["gravada10", "gravada5", "exenta", "iva10", "iva5", "total"];
@@ -508,7 +529,7 @@ contabilidadRouter.get(
     const personSel = { select: { ruc: true, nroDoc: true, razonSocial: true } };
 
     const facturas = await prisma.purchaseInvoice.findMany({
-      where: { companyId: req.companyId, estado: { not: "ANULADO" }, ...(fecha ? { fecha } : {}) },
+      where: { companyId: req.companyId, OR: [{ estado: { not: "ANULADO" } }, { anuladoEnLibroIva: true }], ...(fecha ? { fecha } : {}) },
       include: { supplier: { include: { person: personSel } } },
       orderBy: [{ fecha: "asc" }, { id: "asc" }],
     });
@@ -531,13 +552,10 @@ contabilidadRouter.get(
         timbrado: f.timbrado ?? "",
         condicion: f.condicion,
         ruc: f.supplier.person.ruc ?? f.supplier.person.nroDoc,
-        razonSocial: f.supplier.person.razonSocial,
-        gravada10: n(f.subtotal10),
-        gravada5: n(f.subtotal5),
-        exenta: n(f.subtotalExenta),
-        iva10: n(f.iva10),
-        iva5: n(f.iva5),
-        total: n(f.total),
+        razonSocial: f.estado === "ANULADO" ? `${f.supplier.person.razonSocial} (ANULADO)` : f.supplier.person.razonSocial,
+        anulado: f.estado === "ANULADO",
+        // Anulada que figura en el libro: se lista con montos en 0.
+        ...montosLibro(f),
       })),
       ...notas.map((c) => {
         const p = supById.get(c.supplierId);
@@ -572,7 +590,7 @@ contabilidadRouter.get(
       `${i.establecimiento}-${i.puntoExpedicion}-${i.numero}`;
 
     const facturas = await prisma.salesInvoice.findMany({
-      where: { companyId: req.companyId, estado: { not: "ANULADO" }, ...(fecha ? { fecha } : {}) },
+      where: { companyId: req.companyId, OR: [{ estado: { not: "ANULADO" } }, { anuladoEnLibroIva: true }], ...(fecha ? { fecha } : {}) },
       include: { customer: { include: { person: personSel } } },
       orderBy: [{ fecha: "asc" }, { id: "asc" }],
     });
@@ -590,13 +608,10 @@ contabilidadRouter.get(
         timbrado: f.timbrado ?? "",
         condicion: f.condicion,
         ruc: f.customer.person.ruc ?? f.customer.person.nroDoc,
-        razonSocial: f.customer.person.razonSocial,
-        gravada10: n(f.subtotal10),
-        gravada5: n(f.subtotal5),
-        exenta: n(f.subtotalExenta),
-        iva10: n(f.iva10),
-        iva5: n(f.iva5),
-        total: n(f.total),
+        razonSocial: f.estado === "ANULADO" ? `${f.customer.person.razonSocial} (ANULADO)` : f.customer.person.razonSocial,
+        anulado: f.estado === "ANULADO",
+        // Anulada que figura en el libro: se lista con montos en 0.
+        ...montosLibro(f),
       })),
       ...notas.map((c) => {
         const p = c.invoice?.customer.person;

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs, IVA_LABEL } from "@/lib/format";
+import { formatGs, IVA_LABEL, hoyYmd } from "@/lib/format";
 import type { Article, CondicionPago, Customer, PriceList, PuntoExpedicion, SalesInvoice, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -37,7 +37,7 @@ const METODOS: Array<{ key: MedioPago; label: string }> = [
 ];
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }
 
 // Suma n meses a una fecha yyyy-mm-dd y devuelve yyyy-mm-dd (fecha local, sin TZ).

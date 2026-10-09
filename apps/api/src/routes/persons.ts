@@ -6,6 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { requireAnyPermission } from "../middleware/permission.js";
 import { rucDesdeCedula } from "../services/ruc.js";
 import { parseListParams, paginated, wantsPagination, buildWordSearch } from "../lib/listQuery.js";
+import { diaContable, parseFechaDoc } from "../lib/fechas.js";
 
 // /persons lo usan los 4 programas de personas (personas/clientes/proveedores/trabajadores).
 const PERSON_PROGRAMS = ["FINM001", "FINM002", "FINM003", "FINM004"];
@@ -243,5 +244,87 @@ suppliersRouter.get(
       take: 50,
     });
     res.json(suppliers);
+  })
+);
+
+// Timbrados del proveedor. Por defecto solo los vigentes (no vencidos a hoy), que
+// son los que se ofrecen al cargar una compra.
+suppliersRouter.get(
+  "/:id/timbrados",
+  asyncHandler(async (req, res) => {
+    const supplierId = Number(req.params.id);
+    const todos = req.query.todos === "1";
+    const timbrados = await prisma.supplierTimbrado.findMany({
+      where: {
+        supplierId,
+        activo: true,
+        ...(todos ? {} : { fechaVencimiento: { gte: diaContable(new Date()) } }),
+      },
+      orderBy: [{ fechaVencimiento: "desc" }, { numero: "asc" }],
+    });
+    res.json(timbrados);
+  })
+);
+
+const codigo3 = z.string().regex(/^\d{1,3}$/, "Debe tener hasta 3 digitos").transform((v) => v.padStart(3, "0"));
+
+const supplierTimbradoSchema = z
+  .object({
+    numero: z.string().trim().regex(/^\d{8}$/, "El timbrado debe tener 8 digitos"),
+    tipoDocumento: z.enum(["FACTURA", "NOTA_CREDITO", "NOTA_DEBITO", "REMISION"]).default("FACTURA"),
+    establecimiento: codigo3,
+    puntoExpedicion: codigo3,
+    fechaInicio: z.string().min(1),
+    fechaVencimiento: z.string().min(1),
+    numeroInicial: z.number().int().positive().optional().nullable(),
+    numeroFinal: z.number().int().positive().optional().nullable(),
+    tipo: z.enum(["PREIMPRESO", "AUTOIMPRESOR", "ELECTRONICO"]).optional().nullable(),
+  })
+  .refine((d) => !d.numeroInicial || !d.numeroFinal || d.numeroFinal >= d.numeroInicial, {
+    message: "El numero final debe ser mayor o igual al inicial",
+    path: ["numeroFinal"],
+  });
+
+suppliersRouter.post(
+  "/:id/timbrados",
+  requireAnyPermission(["COMI001", "FINM003"]),
+  asyncHandler(async (req, res) => {
+    const supplierId = Number(req.params.id);
+    const d = supplierTimbradoSchema.parse(req.body);
+    const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier) throw new HttpError(404, "Proveedor no encontrado");
+
+    const fechaInicio = parseFechaDoc(d.fechaInicio);
+    const fechaVencimiento = parseFechaDoc(d.fechaVencimiento);
+    if (fechaVencimiento < fechaInicio) throw new HttpError(400, "La fecha de vencimiento es anterior a la inicial");
+
+    const dup = await prisma.supplierTimbrado.findFirst({
+      where: {
+        supplierId,
+        numero: d.numero,
+        tipoDocumento: d.tipoDocumento,
+        establecimiento: d.establecimiento,
+        puntoExpedicion: d.puntoExpedicion,
+      },
+    });
+    if (dup) {
+      throw new HttpError(409, `El timbrado ${d.numero} (${d.establecimiento}-${d.puntoExpedicion}) ya esta registrado para este proveedor`);
+    }
+
+    const t = await prisma.supplierTimbrado.create({
+      data: {
+        supplierId,
+        numero: d.numero,
+        tipoDocumento: d.tipoDocumento,
+        establecimiento: d.establecimiento,
+        puntoExpedicion: d.puntoExpedicion,
+        fechaInicio,
+        fechaVencimiento,
+        numeroInicial: d.numeroInicial ?? null,
+        numeroFinal: d.numeroFinal ?? null,
+        tipo: d.tipo ?? null,
+      },
+    });
+    res.status(201).json(t);
   })
 );

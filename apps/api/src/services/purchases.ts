@@ -3,19 +3,25 @@ import type { IvaTipo, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { crearSeriesCompra, eliminarSeriesCompra } from "./serials.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
 
 export interface PurchaseItemInput {
   articleId: number;
-  cantidad: number;
-  costoUnitario: number; // con IVA incluido (como figura en la factura)
+  cantidad: number; // unidades que ingresan (compradas + bonificadas)
+  cantidadBonificada?: number; // sin cargo, incluidas en cantidad
+  costoUnitario: number; // precio por unidad comprada, con IVA incluido (como figura en la factura)
+  descuento?: number; // descuento de la linea en Gs (con IVA)
   ivaTipo: IvaTipo;
+  // Importe de la linea (con IVA) por tasa. Si viene, manda sobre costo x cantidad - descuento
+  // y permite que un mismo articulo tenga una parte gravada y otra exenta.
+  importes?: Partial<Record<IvaTipo, number>>;
   series?: string[]; // requerido (largo === cantidad) si el articulo controla serie
 }
 
 export interface CreatePurchaseInput {
   companyId: number;
   supplierId: number;
+  branchId?: number | null;
   warehouseId: number;
   nroComprobante: string;
   timbrado?: string | null;
@@ -30,6 +36,34 @@ export interface CreatePurchaseInput {
 // Redondeo a entero (Guaranies sin decimales)
 const r = (n: number) => Math.round(n);
 
+const TASAS: IvaTipo[] = ["IVA10", "IVA5", "EXENTA"];
+
+export interface ParteIva {
+  ivaTipo: IvaTipo;
+  total: number; // con IVA
+}
+
+/**
+ * Partes por tasa de un item de compra grabado. Los items anteriores al detalle por
+ * tasa (importes en 0) se toman enteros en su `ivaTipo`.
+ */
+export function partesIvaItem(it: {
+  ivaTipo: IvaTipo;
+  total: Prisma.Decimal | number;
+  importe10: Prisma.Decimal | number;
+  importe5: Prisma.Decimal | number;
+  importeExenta: Prisma.Decimal | number;
+}): ParteIva[] {
+  const partes = [
+    { ivaTipo: "IVA10" as const, total: Number(it.importe10) },
+    { ivaTipo: "IVA5" as const, total: Number(it.importe5) },
+    { ivaTipo: "EXENTA" as const, total: Number(it.importeExenta) },
+  ].filter((p) => p.total > 0);
+  return partes.length ? partes : [{ ivaTipo: it.ivaTipo, total: Number(it.total) }];
+}
+
+const importeDe = (partes: ParteIva[], t: IvaTipo) => partes.find((p) => p.ivaTipo === t)?.total ?? 0;
+
 /**
  * Crea una compra y, en una sola transaccion:
  *  1) registra la factura y su detalle
@@ -39,6 +73,9 @@ const r = (n: number) => Math.round(n);
  *  5) encola el evento contable
  */
 export async function createPurchase(prisma: Prisma.TransactionClient, input: CreatePurchaseInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   // --- Calculo de totales (costo neto + IVA) ---
   let subtotalExenta = 0;
   let subtotal5 = 0;
@@ -47,19 +84,46 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   let iva10 = 0;
 
   const computed = input.items.map((it) => {
-    // costoUnitario viene con IVA incluido -> el total de linea (bruto) tambien
-    const bruto = r(it.cantidad * it.costoUnitario);
-    const { neto, iva } = desglosarIvaIncluido(bruto, it.ivaTipo);
-    if (it.ivaTipo === "IVA10") {
-      subtotal10 += neto;
-      iva10 += iva;
-    } else if (it.ivaTipo === "IVA5") {
-      subtotal5 += neto;
-      iva5 += iva;
+    // costoUnitario viene con IVA incluido -> el total de linea (bruto) tambien.
+    // Se cobran solo las unidades compradas (no las bonificadas), menos el descuento.
+    const bonificada = it.cantidadBonificada ?? 0;
+    const descuento = it.descuento ?? 0;
+    const comprada = it.cantidad - bonificada;
+    if (bonificada < 0 || comprada < 0) throw new Error("La cantidad bonificada no puede superar la cantidad de la linea");
+
+    // Importe de la linea por tasa (con IVA)
+    let partes: ParteIva[];
+    if (it.importes) {
+      if (TASAS.some((t) => (it.importes?.[t] ?? 0) < 0)) throw new Error("Los importes de la linea no pueden ser negativos");
+      partes = TASAS.map((t) => ({ ivaTipo: t, total: r(it.importes?.[t] ?? 0) })).filter((p) => p.total > 0);
     } else {
-      subtotalExenta += bruto;
+      const b = r(comprada * it.costoUnitario - descuento);
+      if (b < 0) throw new Error("El descuento no puede superar el importe de la linea");
+      partes = b > 0 ? [{ ivaTipo: it.ivaTipo, total: b }] : [];
     }
-    return { ...it, neto, iva, totalLinea: bruto };
+    const bruto = partes.reduce((s, p) => s + p.total, 0);
+
+    let neto = 0;
+    let iva = 0;
+    for (const p of partes) {
+      const d = desglosarIvaIncluido(p.total, p.ivaTipo);
+      neto += d.neto;
+      iva += d.iva;
+      if (p.ivaTipo === "IVA10") {
+        subtotal10 += d.neto;
+        iva10 += d.iva;
+      } else if (p.ivaTipo === "IVA5") {
+        subtotal5 += d.neto;
+        iva5 += d.iva;
+      } else {
+        subtotalExenta += p.total;
+      }
+    }
+    // Tasa predominante (la de mayor importe), para listados que muestran una sola.
+    const ivaTipo = partes.length ? partes.reduce((a, b) => (b.total > a.total ? b : a)).ivaTipo : it.ivaTipo;
+    // Costo efectivo por unidad ingresada (con IVA): es el que se guarda y valoriza el stock.
+    const costoUnitario = it.cantidad !== 0 ? Math.round((bruto / it.cantidad) * 10000) / 10000 : 0;
+    return { ...it, ivaTipo, partes, costoUnitario, bonificada, descuento, neto, iva, totalLinea: bruto };
   });
 
   const total = subtotalExenta + subtotal5 + subtotal10 + iva5 + iva10;
@@ -86,6 +150,7 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
     data: {
       companyId: input.companyId,
       supplierId: input.supplierId,
+      branchId: input.branchId ?? null,
       warehouseId: input.warehouseId,
       timbrado: input.timbrado ?? null,
       nroComprobante: input.nroComprobante,
@@ -105,9 +170,14 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
         create: computed.map((c) => ({
           articleId: c.articleId,
           cantidad: c.cantidad,
+          cantidadBonificada: c.bonificada,
           costoUnitario: c.costoUnitario,
+          descuento: c.descuento,
           ivaTipo: c.ivaTipo,
           total: c.totalLinea,
+          importe10: importeDe(c.partes, "IVA10"),
+          importe5: importeDe(c.partes, "IVA5"),
+          importeExenta: importeDe(c.partes, "EXENTA"),
         })),
       },
     },
@@ -188,16 +258,20 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
   }
 
   // --- 4) Cuenta corriente proveedor (haber = lo que debemos) ---
-  await prisma.supplierAccountEntry.create({
-    data: {
-      companyId: input.companyId,
-      supplierId: input.supplierId,
-      concepto: `Compra ${input.nroComprobante}`,
-      haber: total,
-      origenTipo: "COMPRA",
-      origenId: invoice.id,
-    },
-  });
+  // Solo la compra a credito genera deuda: la de contado se paga en el acto (su
+  // asiento acredita Caja), igual que la venta de contado no toca la cuenta del cliente.
+  if (input.condicion === "CREDITO") {
+    await prisma.supplierAccountEntry.create({
+      data: {
+        companyId: input.companyId,
+        supplierId: input.supplierId,
+        concepto: `Compra ${input.nroComprobante}`,
+        haber: total,
+        origenTipo: "COMPRA",
+        origenId: invoice.id,
+      },
+    });
+  }
 
   // --- 5) Evento contable (lo procesa el modulo de contabilidad luego) ---
   await prisma.accountingEvent.create({
@@ -217,7 +291,9 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
         iva10,
         total,
         categorias: agruparPorCategoria(
-          computed.map((c) => ({ categoryId: artById.get(c.articleId)?.categoryId ?? null, ivaTipo: c.ivaTipo, total: c.totalLinea }))
+          computed.flatMap((c) =>
+            c.partes.map((p) => ({ categoryId: artById.get(c.articleId)?.categoryId ?? null, ivaTipo: p.ivaTipo, total: p.total }))
+          )
         ),
       },
     },
@@ -230,6 +306,10 @@ export interface AnularPurchaseInput {
   companyId: number;
   invoiceId: number;
   usuarioId?: number | null;
+  motivoAnulacionId?: number | null;
+  observacion?: string | null;
+  /** La factura anulada figura en el Libro IVA Compras (con montos en 0). */
+  enLibroIva?: boolean;
 }
 
 /**
@@ -240,6 +320,9 @@ export interface AnularPurchaseInput {
  * Nota: puede dejar stock negativo si la mercaderia ya se uso; NO revierte costoActual.
  */
 export async function anularPurchase(prisma: Prisma.TransactionClient, input: AnularPurchaseInput) {
+  // La reversa se fecha hoy: el ejercicio de hoy debe estar abierto.
+  await assertPeriodoAbierto(prisma, input.companyId, new Date());
+
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
     include: { items: true },
@@ -287,17 +370,19 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
     });
   }
 
-  // 2) Cuenta corriente proveedor: inverso del haber original
-  await prisma.supplierAccountEntry.create({
-    data: {
-      companyId: input.companyId,
-      supplierId: invoice.supplierId,
-      concepto: `Anulacion compra ${invoice.nroComprobante}`,
-      debe: invoice.total,
-      origenTipo: "ANULACION_COMPRA",
-      origenId: invoice.id,
-    },
-  });
+  // 2) Cuenta corriente proveedor: inverso del haber original (solo credito lo genero)
+  if (invoice.condicion === "CREDITO") {
+    await prisma.supplierAccountEntry.create({
+      data: {
+        companyId: input.companyId,
+        supplierId: invoice.supplierId,
+        concepto: `Anulacion compra ${invoice.nroComprobante}`,
+        debe: invoice.total,
+        origenTipo: "ANULACION_COMPRA",
+        origenId: invoice.id,
+      },
+    });
+  }
 
   // 3) Evento contable de reversa
   await prisma.accountingEvent.create({
@@ -321,7 +406,17 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
   });
 
   // 4) Estado
-  await prisma.purchaseInvoice.update({ where: { id: invoice.id }, data: { estado: "ANULADO" } });
+  await prisma.purchaseInvoice.update({
+    where: { id: invoice.id },
+    data: {
+      estado: "ANULADO",
+      anuladoAt: new Date(),
+      anuladoPorId: input.usuarioId ?? null,
+      motivoAnulacionId: input.motivoAnulacionId ?? null,
+      observacionAnulacion: input.observacion || null,
+      anuladoEnLibroIva: input.enLibroIva ?? false,
+    },
+  });
 
   return { id: invoice.id, nroComprobante: invoice.nroComprobante, estado: "ANULADO" as const };
 }

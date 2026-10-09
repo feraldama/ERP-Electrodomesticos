@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs } from "@/lib/format";
+import { formatGs, hoyYmd } from "@/lib/format";
 import type { Cheque, ChequeEstado } from "@/lib/types";
 import { Field, Select } from "@/components/ui/Field";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
@@ -160,5 +160,5 @@ export default function ChequesPage() {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }

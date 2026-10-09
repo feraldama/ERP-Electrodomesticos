@@ -88,6 +88,8 @@ const MODULES: Array<{
       { codigo: "FINI006", nombre: "Pago a proveedores", categoria: "MOVIMIENTOS", ruta: "/finanzas/pagos" },
       { codigo: "FINI007", nombre: "Cheques pendientes", categoria: "MOVIMIENTOS", ruta: "/finanzas/cheques" },
       { codigo: "FINI008", nombre: "Caja diaria", categoria: "MOVIMIENTOS", ruta: "/finanzas/caja" },
+      { codigo: "FINC009", nombre: "Transacciones registradas y su impacto", categoria: "CONSULTAS", ruta: "/finanzas/transacciones" },
+      { codigo: "FINM010", nombre: "Motivos de anulacion", categoria: "MANTENIMIENTOS", ruta: "/finanzas/motivos-anulacion" },
     ],
   },
   {
@@ -108,6 +110,7 @@ const MODULES: Array<{
       { codigo: "CONC009", nombre: "Libro IVA Ventas", categoria: "LISTADOS", ruta: "/contabilidad/libro-ventas" },
       { codigo: "CONM010", nombre: "Configuracion de cuentas", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/config" },
       { codigo: "CONM011", nombre: "Ejercicios fiscales", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/ejercicios" },
+      { codigo: "CONP012", nombre: "Reclasificacion de cuentas", categoria: "PROCESOS", ruta: "/contabilidad/reclasificacion" },
     ],
   },
   {
@@ -268,6 +271,14 @@ async function main() {
   ];
   for (const pm of methods) {
     await prisma.paymentMethod.upsert({ where: { codigo: pm.codigo }, update: {}, create: pm });
+  }
+
+  // Motivo de anulacion inicial; el resto se administra en FINM010.
+  const motivos = [
+    { codigo: "2303", descripcion: "ERROR EN LA CARGA" },
+  ];
+  for (const m of motivos) {
+    await prisma.motivoAnulacion.upsert({ where: { codigo: m.codigo }, update: {}, create: m });
   }
 
   // Listas de precios: contado + planes de credito (6/10/12 cuotas).

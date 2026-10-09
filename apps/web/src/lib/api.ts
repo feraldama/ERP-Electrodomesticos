@@ -55,8 +55,16 @@ export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Pro
   if (!res.ok) {
     throw new Error((data as { error?: string }).error ?? "Error en la solicitud");
   }
+  // La operacion se guardo pero su asiento no: lo avisa el ToastProvider.
+  const errContable = res.headers.get("X-Contabilidad-Error");
+  if (errContable && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(CONTABILIDAD_ERROR_EVENT, { detail: decodeURIComponent(errContable) }));
+  }
   return data as T;
 }
+
+/** Evento de window que emite api() cuando el backend informa un asiento fallido. */
+export const CONTABILIDAD_ERROR_EVENT = "erp:contabilidad-error";
 
 // Origen del backend (sin el sufijo /api), para servir archivos estaticos como /uploads/...
 const ASSET_ORIGIN = API_URL.replace(/\/api\/?$/, "");

@@ -53,6 +53,7 @@ model Branch {
   activo      Boolean @default(true)
 
   company     Company @relation(fields: [companyId], references: [id])
+  purchases   PurchaseInvoice[]
 
   @@unique([companyId, codigo])
   @@map("branches")
@@ -235,8 +236,39 @@ model Supplier {
   person          Person   @relation(fields: [personId], references: [id])
   purchaseInvoices PurchaseInvoice[]
   account         SupplierAccountEntry[]
+  timbrados       SupplierTimbrado[]
 
   @@map("suppliers")
+}
+
+// Timbrados de los proveedores: se registran una vez y se eligen al cargar compras.
+// Los vencidos dejan de ofrecerse.
+model SupplierTimbrado {
+  id               Int      @id @default(autoincrement())
+  supplierId       Int
+  numero           String   // nro de timbrado, ej "16087162"
+  tipoDocumento    TipoDocElectronico @default(FACTURA)
+  establecimiento  String   // ej "016"
+  puntoExpedicion  String   // ej "003"
+  fechaInicio      DateTime
+  fechaVencimiento DateTime
+  numeroInicial    Int?
+  numeroFinal      Int?
+  tipo             TipoTimbrado?
+  activo           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  supplier         Supplier @relation(fields: [supplierId], references: [id])
+
+  @@unique([supplierId, numero, tipoDocumento, establecimiento, puntoExpedicion], map: "supplier_timbrados_numero_key")
+  @@index([supplierId, fechaVencimiento])
+  @@map("supplier_timbrados")
+}
+
+enum TipoTimbrado {
+  PREIMPRESO
+  AUTOIMPRESOR
+  ELECTRONICO
 }
 
 model Employee {
@@ -547,6 +579,7 @@ model PurchaseInvoice {
   id            Int      @id @default(autoincrement())
   companyId     Int
   supplierId    Int
+  branchId      Int?     // sucursal que registra la compra
   warehouseId   Int?     // deposito que recibe la mercaderia
   // datos del comprobante del proveedor
   timbrado      String?
@@ -565,8 +598,16 @@ model PurchaseInvoice {
   observacion   String?
   createdAt     DateTime @default(now())
   usuarioId     Int?
+  // anulacion
+  anuladoAt            DateTime?
+  anuladoPorId         Int?
+  motivoAnulacionId    Int?
+  observacionAnulacion String?
+  anuladoEnLibroIva    Boolean  @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
 
   supplier      Supplier @relation(fields: [supplierId], references: [id])
+  branch        Branch?  @relation(fields: [branchId], references: [id])
+  motivoAnulacion MotivoAnulacion? @relation(fields: [motivoAnulacionId], references: [id])
   items         PurchaseInvoiceItem[]
   creditNotes   PurchaseCreditNote[]
   returns       PurchaseReturn[]
@@ -579,10 +620,17 @@ model PurchaseInvoiceItem {
   id          Int      @id @default(autoincrement())
   invoiceId   Int
   articleId   Int
-  cantidad    Decimal  @db.Decimal(18, 4)
-  costoUnitario Decimal @db.Decimal(18, 4)
-  ivaTipo     IvaTipo  @default(IVA10)
+  cantidad    Decimal  @db.Decimal(18, 4) // unidades que ingresan (compradas + bonificadas)
+  cantidadBonificada Decimal @default(0) @db.Decimal(18, 4) // sin cargo, incluidas en cantidad
+  costoUnitario Decimal @db.Decimal(18, 4) // costo efectivo con IVA: total / cantidad
+  descuento   Decimal  @default(0) @db.Decimal(18, 4) // descuento de la linea (Gs, con IVA)
+  ivaTipo     IvaTipo  @default(IVA10) // tasa predominante (la de mayor importe)
   total       Decimal  @db.Decimal(18, 4)
+  // Importe de la linea (con IVA) por tasa: un articulo puede tener una parte gravada
+  // y otra exenta. Suman `total`.
+  importe10     Decimal @default(0) @db.Decimal(18, 4)
+  importe5      Decimal @default(0) @db.Decimal(18, 4)
+  importeExenta Decimal @default(0) @db.Decimal(18, 4)
 
   invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   article     Article  @relation(fields: [articleId], references: [id])
@@ -658,6 +706,19 @@ enum DocEstado {
   ANULADO
 }
 
+// Motivo de anulacion de comprobantes (catalogo global, como PaymentMethod).
+model MotivoAnulacion {
+  id          Int     @id @default(autoincrement())
+  codigo      String  @unique // ej 2303
+  descripcion String
+  activo      Boolean @default(true)
+
+  salesInvoices    SalesInvoice[]
+  purchaseInvoices PurchaseInvoice[]
+
+  @@map("motivos_anulacion")
+}
+
 // =====================================================================
 // MODULO 3: VENTAS (con SIFEN / facturacion electronica Paraguay)
 // =====================================================================
@@ -731,8 +792,15 @@ model SalesInvoice {
   observacion     String?
   createdAt       DateTime @default(now())
   usuarioId       Int?
+  // anulacion
+  anuladoAt            DateTime?
+  anuladoPorId         Int?
+  motivoAnulacionId    Int?
+  observacionAnulacion String?
+  anuladoEnLibroIva    Boolean  @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
 
   customer        Customer @relation(fields: [customerId], references: [id])
+  motivoAnulacion MotivoAnulacion? @relation(fields: [motivoAnulacionId], references: [id])
   priceList       PriceList? @relation(fields: [priceListId], references: [id])
   items           SalesInvoiceItem[]
   payments        SalesPayment[]
@@ -1206,6 +1274,7 @@ model AccountingEntry {
 
   @@unique([companyId, numero])
   @@index([companyId, fecha])
+  @@index([companyId, origenTipo, origenId])
   @@map("accounting_entries")
 }
 
@@ -1240,5 +1309,6 @@ model AccountingEvent {
   processedAt DateTime?
 
   @@index([companyId, procesado])
+  @@index([companyId, origenTipo, origenId])
   @@map("accounting_events")
 }

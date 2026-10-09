@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
+import { partesIvaItem, type ParteIva } from "./purchases.js";
 
 export interface PurchaseCreditNoteItemInput {
   articleId: number;
@@ -45,6 +46,9 @@ function allocate(amount: number, weights: number[]): number[] {
  * debemos) y encola el evento contable. Devuelve la NC creada.
  */
 export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient, input: CreatePurchaseCreditNoteInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
     include: { items: true },
@@ -66,7 +70,7 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
   const hasItems = items.length > 0;
 
   let subtotalExenta = 0, subtotal5 = 0, subtotal10 = 0, iva5 = 0, iva10 = 0, total = 0;
-  const computed: Array<{ articleId: number; cantidad: number; costoUnitario: number; ivaTipo: "IVA10" | "IVA5" | "EXENTA"; total: number }> = [];
+  const computed: Array<{ articleId: number; cantidad: number; costoUnitario: number; ivaTipo: "IVA10" | "IVA5" | "EXENTA"; total: number; partes: ParteIva[] }> = [];
 
   if (hasItems) {
     if (!input.warehouseId) throw new Error("Indica el deposito desde donde sale el stock devuelto");
@@ -82,11 +86,17 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
       }
       const ivaTipo = invItem.ivaTipo;
       const bruto = r(it.cantidad * it.costoUnitario);
-      const { neto, iva } = desglosarIvaIncluido(bruto, ivaTipo);
-      if (ivaTipo === "IVA10") { subtotal10 += neto; iva10 += iva; }
-      else if (ivaTipo === "IVA5") { subtotal5 += neto; iva5 += iva; }
-      else subtotalExenta += bruto;
-      computed.push({ articleId: it.articleId, cantidad: it.cantidad, costoUnitario: it.costoUnitario, ivaTipo, total: bruto });
+      // Si la linea de la compra tenia varias tasas, el credito se reparte en la misma proporcion.
+      const origen = partesIvaItem(invItem);
+      const montos = origen.length > 1 ? allocate(bruto, origen.map((p) => p.total)) : [bruto];
+      const partes: ParteIva[] = origen.map((p, i) => ({ ivaTipo: p.ivaTipo, total: montos[i] }));
+      for (const p of partes) {
+        const { neto, iva } = desglosarIvaIncluido(p.total, p.ivaTipo);
+        if (p.ivaTipo === "IVA10") { subtotal10 += neto; iva10 += iva; }
+        else if (p.ivaTipo === "IVA5") { subtotal5 += neto; iva5 += iva; }
+        else subtotalExenta += p.total;
+      }
+      computed.push({ articleId: it.articleId, cantidad: it.cantidad, costoUnitario: it.costoUnitario, ivaTipo, total: bruto, partes });
     }
     total = subtotalExenta + subtotal5 + subtotal10 + iva5 + iva10;
   } else {
@@ -185,7 +195,9 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
         iva5,
         iva10,
         categorias: hasItems
-          ? agruparPorCategoria(computed.map((c) => ({ categoryId: artCat.get(c.articleId) ?? null, ivaTipo: c.ivaTipo, total: c.total })))
+          ? agruparPorCategoria(
+              computed.flatMap((c) => c.partes.map((p) => ({ categoryId: artCat.get(c.articleId) ?? null, ivaTipo: p.ivaTipo, total: p.total })))
+            )
           : [],
       },
     },

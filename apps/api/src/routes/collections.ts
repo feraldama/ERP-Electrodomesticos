@@ -6,6 +6,8 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createCollection } from "../services/payments.js";
+import { contabilizar } from "../lib/contabilizar.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // COBROS DE CUOTAS (pagos recibidos de clientes, aplicados a cuotas)
@@ -67,7 +69,7 @@ cobrosRouter.post(
         createCollection(tx, {
           companyId,
           customerId: d.customerId,
-          fecha: new Date(d.fecha),
+          fecha: parseFechaDoc(d.fecha),
           metodo: d.metodo,
           observacion: d.observacion ?? null,
           usuarioId: req.auth?.userId ?? null,
@@ -80,6 +82,7 @@ cobrosRouter.post(
       throw err;
     }
 
+    await contabilizar(res, companyId, [{ origenTipo: "COBRO", origenId: payment.id }]);
     res.status(201).json(payment);
   })
 );

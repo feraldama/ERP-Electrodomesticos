@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs, IVA_LABEL } from "@/lib/format";
+import { formatGs, IVA_LABEL, hoyYmd } from "@/lib/format";
 import type { Article, Customer, PriceList, SalesQuote } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -22,7 +22,7 @@ interface Line {
   precioUnitario: string;
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }
 function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");

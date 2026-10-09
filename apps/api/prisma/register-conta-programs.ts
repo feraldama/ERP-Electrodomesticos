@@ -10,6 +10,7 @@ const NUEVOS: Array<{ codigo: string; nombre: string; categoria: ProgramCategori
   { codigo: "CONC009", nombre: "Libro IVA Ventas", categoria: "LISTADOS", ruta: "/contabilidad/libro-ventas" },
   { codigo: "CONM010", nombre: "Configuracion de cuentas", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/config" },
   { codigo: "CONM011", nombre: "Ejercicios fiscales", categoria: "MANTENIMIENTOS", ruta: "/contabilidad/ejercicios" },
+  { codigo: "CONP012", nombre: "Reclasificacion de cuentas", categoria: "PROCESOS", ruta: "/contabilidad/reclasificacion" },
 ];
 
 async function main() {

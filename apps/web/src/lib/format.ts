@@ -98,3 +98,17 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" }) +
     " " + d.toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" });
 }
+
+// --- Fechas para inputs date (YYYY-MM-DD) ---
+// Siempre en hora LOCAL: `toISOString()` da la fecha UTC, que en Paraguay despues
+// de las 21:00 ya es el dia siguiente (una venta de las 22:00 saldria con fecha de
+// manana y podria caer en otro ejercicio).
+export function toYmdLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Hoy (hora local) en formato YYYY-MM-DD. */
+export function hoyYmd(): string {
+  return toYmdLocal(new Date());
+}

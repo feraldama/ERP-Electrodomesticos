@@ -3,54 +3,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs } from "@/lib/format";
-import type { Article, IvaTipo, Supplier, Warehouse } from "@/lib/types";
+import { formatGs, hoyYmd } from "@/lib/format";
+import type { Branch, Supplier, SupplierTimbrado, Warehouse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { SelectWithAdd } from "@/components/ui/SelectWithAdd";
 import { QuickCreateModal } from "@/components/QuickCreateModal";
 import { PersonFormModal } from "@/components/PersonFormModal";
 import { SupplierPicker } from "@/components/SupplierPicker";
-import { MoneyInput } from "@/components/ui/MoneyInput";
+import { SupplierTimbradoModal } from "@/components/SupplierTimbradoModal";
 import { useToast } from "@/components/ui/Toast";
-import { ArticleAutocomplete } from "@/components/ArticleAutocomplete";
-import { useArticleRowFocus } from "@/lib/useArticleRowFocus";
+import { PurchaseLineModal } from "@/components/PurchaseLineModal";
+import { calcLinea, type CompraLinea } from "@/lib/compraLinea";
 import { desglosarIvaIncluido } from "@/lib/iva";
-import { Trash2 } from "lucide-react";
-
-interface Line {
-  article: Article;
-  cantidad: string;
-  costoUnitario: string;
-  ivaTipo: IvaTipo;
-  series: string; // textarea (una serie/IMEI por renglon); solo si el articulo controla serie
-}
-
-// Series no vacias de una linea.
-function parseSeries(raw: string): string[] {
-  return raw.split("\n").map((s) => s.trim()).filter(Boolean);
-}
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return hoyYmd();
 }
 
 export default function CargarCompraPage() {
   const { companyId } = useAuth();
   const { notify } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchId, setBranchId] = useState("");
 
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [warehouseId, setWarehouseId] = useState("");
-  const [nroComprobante, setNroComprobante] = useState("");
-  const [timbrado, setTimbrado] = useState("");
+  // Nro de comprobante en partes: establecimiento (3) - punto de emision (3) - numero (7)
+  const [establecimiento, setEstablecimiento] = useState("");
+  const [puntoEmision, setPuntoEmision] = useState("");
+  const [numeroFactura, setNumeroFactura] = useState("");
+  // Timbrados vigentes del proveedor seleccionado
+  const [timbrados, setTimbrados] = useState<SupplierTimbrado[]>([]);
+  const [timbradoId, setTimbradoId] = useState("");
+  const [addTimb, setAddTimb] = useState(false);
   const [fecha, setFecha] = useState(today());
   const [condicion, setCondicion] = useState<"CONTADO" | "CREDITO">("CONTADO");
-  const [lines, setLines] = useState<Line[]>([]);
+  const [lines, setLines] = useState<CompraLinea[]>([]);
+  // Asistente de detalle: abierto con una linea a editar (o null = nueva)
+  const [lineModal, setLineModal] = useState<{ open: boolean; edit: CompraLinea | null }>({ open: false, edit: null });
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
   const [addSup, setAddSup] = useState(false);
-  const { searchRef, registerQty, focusQty, qtyTabToSearch } = useArticleRowFocus();
 
   useEffect(() => {
     api<Warehouse[]>("/warehouses")
@@ -59,23 +55,45 @@ export default function CargarCompraPage() {
         if (ws.length) setWarehouseId(String(ws[0].id));
       })
       .catch(() => setWarehouses([]));
+    api<Branch[]>("/branches")
+      .then((bs) => {
+        setBranches(bs);
+        if (bs.length) setBranchId(String(bs[0].id));
+      })
+      .catch(() => setBranches([]));
   }, [companyId]);
 
-  function addArticle(a: Article) {
-    if (lines.some((l) => l.article.id === a.id)) {
-      notify("error", "El articulo ya esta en la lista");
-      return;
+  // Al cambiar de proveedor se cargan sus timbrados vigentes; si tiene uno solo se elige.
+  useEffect(() => {
+    setTimbrados([]);
+    setTimbradoId("");
+    if (!selectedSupplier) return;
+    api<SupplierTimbrado[]>(`/suppliers/${selectedSupplier.id}/timbrados`)
+      .then((ts) => {
+        setTimbrados(ts);
+        if (ts.length === 1) selectTimbrado(ts[0]);
+      })
+      .catch(() => setTimbrados([]));
+  }, [selectedSupplier]);
+
+  // Elegir un timbrado completa establecimiento y punto de emision del comprobante.
+  function selectTimbrado(t: SupplierTimbrado | undefined) {
+    setTimbradoId(t ? String(t.id) : "");
+    if (t) {
+      setEstablecimiento(t.establecimiento);
+      setPuntoEmision(t.puntoExpedicion);
     }
-    setLines((ls) => [
-      ...ls,
-      { article: a, cantidad: a.controlaSerie ? "0" : "1", costoUnitario: a.costoActual ?? "0", ivaTipo: a.ivaTipo, series: "" },
-    ]);
-    // Los articulos con serie no tienen input de cantidad (se define por las series).
-    if (!a.controlaSerie) focusQty(a.id);
   }
 
-  function updateLine(id: number, patch: Partial<Line>) {
-    setLines((ls) => ls.map((l) => (l.article.id === id ? { ...l, ...patch } : l)));
+  const timbradoSel = timbrados.find((t) => String(t.id) === timbradoId);
+
+  // Alta o modificacion de una linea desde el asistente
+  function saveLine(nueva: CompraLinea) {
+    setLines((ls) =>
+      ls.some((l) => l.article.id === nueva.article.id)
+        ? ls.map((l) => (l.article.id === nueva.article.id ? nueva : l))
+        : [...ls, nueva]
+    );
   }
   function removeLine(id: number) {
     setLines((ls) => ls.filter((l) => l.article.id !== id));
@@ -84,29 +102,46 @@ export default function CargarCompraPage() {
   // Totales: el costo ya incluye IVA -> se desglosa (mismo calculo que el backend)
   const totals = useMemo(() => {
     let exenta = 0, grav5 = 0, grav10 = 0, iva5 = 0, iva10 = 0;
+    // Cada linea puede tener importe en varias tasas: se desglosa parte por parte.
     for (const l of lines) {
-      const bruto = Math.round((Number(l.cantidad) || 0) * (Number(l.costoUnitario) || 0));
-      const { neto, iva } = desglosarIvaIncluido(bruto, l.ivaTipo);
-      if (l.ivaTipo === "IVA10") { grav10 += neto; iva10 += iva; }
-      else if (l.ivaTipo === "IVA5") { grav5 += neto; iva5 += iva; }
-      else exenta += bruto;
+      const { partes } = calcLinea(l);
+      const d10 = desglosarIvaIncluido(partes.IVA10, "IVA10");
+      const d5 = desglosarIvaIncluido(partes.IVA5, "IVA5");
+      grav10 += d10.neto; iva10 += d10.iva;
+      grav5 += d5.neto; iva5 += d5.iva;
+      exenta += partes.EXENTA;
     }
     return { exenta, grav5, grav10, iva5, iva10, total: exenta + grav5 + grav10 + iva5 + iva10 };
   }, [lines]);
 
-  function lineTotal(l: Line) {
-    return Math.round((Number(l.cantidad) || 0) * (Number(l.costoUnitario) || 0));
-  }
+  const nroCompleto = numeroFactura
+    ? `${pad(establecimiento, 3)}-${pad(puntoEmision, 3)}-${pad(numeroFactura, 7)}`
+    : "";
 
   async function confirm() {
     if (!selectedSupplier) {
       document.getElementById("prov")?.focus();
       return notify("error", "Selecciona un proveedor");
     }
+    if (!timbradoSel) {
+      document.getElementById("timb")?.focus();
+      return notify("error", "Selecciona el timbrado (o dalo de alta)");
+    }
+    if (timbradoSel.establecimiento !== pad(establecimiento, 3) || timbradoSel.puntoExpedicion !== pad(puntoEmision, 3)) {
+      return notify("error", `El timbrado ${timbradoSel.numero} corresponde a ${timbradoSel.establecimiento}-${timbradoSel.puntoExpedicion}`);
+    }
+    if (branches.length && !branchId) return notify("error", "Selecciona una sucursal");
     if (!warehouseId) return notify("error", "Selecciona un deposito");
-    if (!nroComprobante.trim()) return notify("error", "Ingresa el nro de comprobante");
+    if (!Number(establecimiento) || !Number(puntoEmision)) {
+      document.getElementById("est")?.focus();
+      return notify("error", "Ingresa el comprobante y punto de emision");
+    }
+    if (!Number(numeroFactura)) {
+      document.getElementById("nro")?.focus();
+      return notify("error", "Ingresa el numero de factura");
+    }
     if (lines.length === 0) return notify("error", "Agrega al menos un articulo");
-    if (lines.some((l) => !(Number(l.cantidad) > 0))) return notify("error", "Cantidades deben ser mayores a cero");
+    if (lines.some((l) => !(calcLinea(l).adquirida > 0))) return notify("error", "Cantidades deben ser mayores a cero");
 
     setSaving(true);
     try {
@@ -114,24 +149,32 @@ export default function CargarCompraPage() {
         method: "POST",
         body: JSON.stringify({
           supplierId: selectedSupplier.id,
+          branchId: branchId ? Number(branchId) : null,
           warehouseId: Number(warehouseId),
-          nroComprobante: nroComprobante.trim(),
-          timbrado: timbrado.trim() || null,
+          nroComprobante: nroCompleto,
+          timbrado: timbradoSel?.numero ?? null,
           fecha,
           condicion,
-          items: lines.map((l) => ({
-            articleId: l.article.id,
-            cantidad: Number(l.cantidad),
-            costoUnitario: Number(l.costoUnitario),
-            ivaTipo: l.ivaTipo,
-            ...(l.article.controlaSerie ? { series: parseSeries(l.series) } : {}),
-          })),
+          items: lines.map((l) => {
+            const c = calcLinea(l);
+            return {
+              articleId: l.article.id,
+              cantidad: c.adquirida,
+              cantidadBonificada: l.bonificada,
+              // Precio por unidad comprada; si se cargo el importe se deriva de el (puede tener decimales)
+              costoUnitario: Math.round(c.costoUnitario * 1e6) / 1e6,
+              descuento: c.descuento,
+              ivaTipo: l.ivaTipo,
+              importes: c.partes, // importe por tasa (con IVA): manda sobre costo x cantidad
+              ...(l.article.controlaSerie ? { series: l.series } : {}),
+            };
+          }),
         }),
       });
       notify("success", "Compra registrada: stock y costos actualizados");
       // limpiar
-      setNroComprobante("");
-      setTimbrado("");
+      // Se conservan establecimiento/punto/timbrado: suele cargarse varias facturas del mismo proveedor
+      setNumeroFactura("");
       setLines([]);
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Error al registrar la compra");
@@ -150,11 +193,85 @@ export default function CargarCompraPage() {
         <p className="text-sm text-slate-500">Registra una compra: ingresa stock, actualiza costos y la cuenta del proveedor</p>
       </div>
 
-      {/* Cabecera */}
-      <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Tipo, Numeracion y Fecha */}
+      <Section title="Tipo, Numeración y Fecha">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Tipo de movimiento" htmlFor="cond" required>
+            <Select id="cond" value={condicion} onChange={(e) => setCondicion(e.target.value as "CONTADO" | "CREDITO")}>
+              <option value="CONTADO">Compra contado</option>
+              <option value="CREDITO">Compra credito</option>
+            </Select>
+          </Field>
+          <Field label="Fecha de comprobante" htmlFor="fecha" required>
+            <Input id="fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          </Field>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-[1fr_1fr_1.4fr_2fr]">
+          <Field label="Comprobante" htmlFor="est" required>
+            <Input id="est" value={establecimiento} inputMode="numeric" maxLength={3} placeholder="000"
+              className="text-right font-mono"
+              onChange={(e) => setEstablecimiento(soloDigitos(e.target.value))}
+              onBlur={() => establecimiento && setEstablecimiento(pad(establecimiento, 3))} />
+          </Field>
+          <Field label="Punto de emision" htmlFor="pto" required>
+            <Input id="pto" value={puntoEmision} inputMode="numeric" maxLength={3} placeholder="000"
+              className="text-right font-mono"
+              onChange={(e) => setPuntoEmision(soloDigitos(e.target.value))}
+              onBlur={() => puntoEmision && setPuntoEmision(pad(puntoEmision, 3))} />
+          </Field>
+          <Field label="Numero de factura" htmlFor="nro" required>
+            <Input id="nro" value={numeroFactura} inputMode="numeric" maxLength={7} placeholder="0000000"
+              className="text-right font-mono"
+              onChange={(e) => setNumeroFactura(soloDigitos(e.target.value))}
+              onBlur={() => numeroFactura && setNumeroFactura(pad(numeroFactura, 7))} />
+          </Field>
+          <div className="col-span-2 sm:col-span-1">
+            <span className="mb-1 block text-sm font-medium text-secondary">Formato de factura</span>
+            <div className="flex h-10 items-center rounded-lg border border-dashed border-border px-3 font-mono text-sm text-foreground">
+              {nroCompleto || <span className="text-slate-400">000-000-0000000</span>}
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Proveedor y otros datos */}
+      <Section title="Proveedor y otros datos">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
           <Field label="Proveedor" htmlFor="prov" required>
             <SupplierPicker id="prov" selected={selectedSupplier} onSelect={setSelectedSupplier} onAdd={() => setAddSup(true)} />
+          </Field>
+          <div>
+            <span className="mb-1 block text-sm font-medium text-secondary">RUC</span>
+            <div className="flex h-10 items-center rounded-lg border border-border bg-muted/60 px-3 font-mono text-sm text-foreground">
+              {selectedSupplier
+                ? selectedSupplier.person.ruc || selectedSupplier.person.nroDoc
+                : <span className="text-slate-400">—</span>}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field label="Timbrado" htmlFor="timb" required>
+            <SelectWithAdd id="timb" value={timbradoId}
+              onChange={(e) => selectTimbrado(timbrados.find((t) => String(t.id) === e.target.value))}
+              onAdd={() => (selectedSupplier ? setAddTimb(true) : notify("error", "Selecciona primero el proveedor"))}
+              addTitle="Alta de timbrado">
+              <option value="">
+                {!selectedSupplier ? "— Elegi un proveedor —" : timbrados.length ? "-- Selecciona --" : "— Sin timbrados vigentes —"}
+              </option>
+              {timbrados.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.numero} · {t.establecimiento}-{t.puntoExpedicion} · vence {ymdAFecha(t.fechaVencimiento)}
+                </option>
+              ))}
+            </SelectWithAdd>
+          </Field>
+          <Field label="Sucursal" htmlFor="suc" required>
+            <Select id="suc" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              {branches.length === 0 && <option value="">— Sin sucursales —</option>}
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.codigo} - {b.nombre}</option>
+              ))}
+            </Select>
           </Field>
           <Field label="Deposito de ingreso" htmlFor="dep" required>
             <SelectWithAdd id="dep" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} onAdd={() => setAddWh(true)} addTitle="Crear deposito">
@@ -163,103 +280,75 @@ export default function CargarCompraPage() {
               ))}
             </SelectWithAdd>
           </Field>
-          <Field label="Condicion" htmlFor="cond">
-            <Select id="cond" value={condicion} onChange={(e) => setCondicion(e.target.value as "CONTADO" | "CREDITO")}>
-              <option value="CONTADO">Contado</option>
-              <option value="CREDITO">Credito</option>
-            </Select>
-          </Field>
-          <Field label="Nro. comprobante" htmlFor="nro" required>
-            <Input id="nro" value={nroComprobante} onChange={(e) => setNroComprobante(e.target.value)} placeholder="001-001-0000123" />
-          </Field>
-          <Field label="Timbrado" htmlFor="timb">
-            <Input id="timb" value={timbrado} onChange={(e) => setTimbrado(e.target.value)} />
-          </Field>
-          <Field label="Fecha" htmlFor="fecha" required>
-            <Input id="fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-          </Field>
         </div>
+      </Section>
 
-        {/* Agregar articulos */}
-        <div className="mt-5">
-          <label className="mb-1 block text-sm font-medium text-secondary">Agregar articulo</label>
-          <ArticleAutocomplete onSelect={addArticle} inputRef={searchRef} />
-        </div>
-
-        {/* Detalle */}
-        <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+      {/* Detalle */}
+      <Section
+        title="Detalle"
+        actions={
+          <Button size="sm" onClick={() => setLineModal({ open: true, edit: null })}>
+            <Plus className="h-4 w-4" /> Agregar
+          </Button>
+        }
+      >
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/60 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 font-medium">Articulo</th>
                 <th className="px-3 py-2 text-right font-medium">Cantidad</th>
-                <th className="px-3 py-2 text-right font-medium">Costo unit. (con IVA)</th>
-                <th className="px-3 py-2 text-center font-medium">IVA</th>
-                <th className="px-3 py-2 text-right font-medium">Total</th>
+                <th className="px-3 py-2 text-right font-medium">Costo unit.</th>
+                <th className="px-3 py-2 text-right font-medium">Descuento</th>
+                <th className="px-3 py-2 text-right font-medium">Grav. 10%</th>
+                <th className="px-3 py-2 text-right font-medium">Grav. 5%</th>
+                <th className="px-3 py-2 text-right font-medium">Exentas</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">Busca y agrega articulos a la compra.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">Usa &quot;Agregar&quot; para cargar los articulos de la compra.</td></tr>
               ) : (
-                lines.map((l) => (
-                  <tr key={l.article.id} className="border-b border-border last:border-0 align-top">
-                    <td className="px-3 py-2">
-                      <div className="text-foreground">{l.article.descripcion}</div>
-                      <div className="font-mono text-xs text-slate-500">{l.article.codigo}</div>
-                      {l.article.controlaSerie && (
-                        <div className="mt-2">
-                          <textarea
-                            value={l.series}
-                            onChange={(e) =>
-                              updateLine(l.article.id, {
-                                series: e.target.value,
-                                cantidad: String(parseSeries(e.target.value).length),
-                              })
-                            }
-                            rows={3}
-                            placeholder="Una serie / IMEI por renglon"
-                            className="w-full rounded-lg border border-border px-2 py-1 font-mono text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                          />
-                          <p className="mt-0.5 text-[11px] text-slate-500">{parseSeries(l.series).length} unidad(es) por serie</p>
+                lines.map((l) => {
+                  const c = calcLinea(l);
+                  return (
+                    <tr key={l.article.id} onDoubleClick={() => setLineModal({ open: true, edit: l })}
+                      className="border-b border-border last:border-0 align-top hover:bg-muted/40">
+                      <td className="px-3 py-2">
+                        <div className="text-foreground">{l.article.descripcion}</div>
+                        <div className="font-mono text-xs text-slate-500">
+                          {l.article.codigo}
+                          {l.article.controlaSerie && ` · ${l.series.length} serie(s)`}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {l.article.controlaSerie ? (
-                        <span className="inline-block w-20 rounded-lg bg-muted px-2 py-1 text-right text-sm text-slate-600">
-                          {l.cantidad}
-                        </span>
-                      ) : (
-                        <input type="number" min={0} value={l.cantidad}
-                          ref={registerQty(l.article.id)}
-                          onKeyDown={qtyTabToSearch}
-                          onChange={(e) => updateLine(l.article.id, { cantidad: e.target.value })}
-                          className="w-20 rounded-lg border border-border px-2 py-1 text-right text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <MoneyInput value={l.costoUnitario}
-                        onChange={(v) => updateLine(l.article.id, { costoUnitario: v })}
-                        className="h-8 w-28 px-2 py-1" />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <Select value={l.ivaTipo} onChange={(e) => updateLine(l.article.id, { ivaTipo: e.target.value as IvaTipo })} className="w-24">
-                        <option value="IVA10">10%</option>
-                        <option value="IVA5">5%</option>
-                        <option value="EXENTA">Exenta</option>
-                      </Select>
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-medium text-foreground">{formatGs(lineTotal(l))}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button onClick={() => removeLine(l.article.id)} aria-label="Quitar"
-                        className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {c.adquirida}
+                        {l.bonificada > 0 && <div className="text-[11px] text-slate-500">{l.bonificada} bonif.</div>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">{formatGs(Math.round(c.costoUnitario))}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-600">
+                        {c.descuento ? formatGs(c.descuento) : "-"}
+                        {l.descTipo === "PORC" && l.descValor > 0 && <div className="text-[11px] text-slate-500">{l.descValor}%</div>}
+                      </td>
+                      {(["IVA10", "IVA5", "EXENTA"] as const).map((t) => (
+                        <td key={t} className="px-3 py-2 text-right font-mono font-medium text-foreground">
+                          {c.partes[t] ? formatGs(c.partes[t]) : <span className="font-normal text-slate-300">0</span>}
+                        </td>
+                      ))}
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        <button onClick={() => setLineModal({ open: true, edit: l })} aria-label="Editar"
+                          className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-muted hover:text-primary">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => removeLine(l.article.id)} aria-label="Quitar"
+                          className="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -283,7 +372,15 @@ export default function CargarCompraPage() {
             Confirmar compra
           </Button>
         </div>
-      </div>
+      </Section>
+
+      <PurchaseLineModal
+        open={lineModal.open}
+        onClose={() => setLineModal((m) => ({ ...m, open: false }))}
+        initial={lineModal.edit}
+        excludeIds={lines.map((l) => l.article.id)}
+        onSave={saveLine}
+      />
 
       <QuickCreateModal
         kind="warehouse"
@@ -292,6 +389,22 @@ export default function CargarCompraPage() {
         onCreated={(item) => {
           setWarehouses((p) => [...p, item as unknown as Warehouse]);
           setWarehouseId(String(item.id));
+        }}
+      />
+
+      <SupplierTimbradoModal
+        open={addTimb}
+        onClose={() => setAddTimb(false)}
+        supplierId={selectedSupplier?.id ?? null}
+        defaults={{ establecimiento, puntoExpedicion: puntoEmision }}
+        onCreated={(t) => {
+          // Solo se ofrece si sigue vigente
+          if (t.fechaVencimiento.slice(0, 10) >= today()) {
+            setTimbrados((p) => [t, ...p]);
+            selectTimbrado(t);
+          } else {
+            notify("error", "El timbrado registrado ya esta vencido");
+          }
         }}
       />
 
@@ -310,6 +423,31 @@ export default function CargarCompraPage() {
         }}
       />
     </div>
+  );
+}
+
+function soloDigitos(v: string) {
+  return v.replace(/\D/g, "");
+}
+
+// "2026-12-31T00:00:00.000Z" -> "31/12/2026" (fecha de documento: dia en UTC)
+function ymdAFecha(iso: string) {
+  return iso.slice(0, 10).split("-").reverse().join("/");
+}
+
+function pad(v: string, n: number) {
+  return (v || "").padStart(n, "0");
+}
+
+function Section({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="mb-4 rounded-xl border border-border bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-3">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {actions}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
   );
 }
 

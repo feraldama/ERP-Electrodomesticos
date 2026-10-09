@@ -6,6 +6,8 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSalesCreditNote } from "../services/salesCreditNotes.js";
+import { contabilizar } from "../lib/contabilizar.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // NOTAS DE CREDITO DE VENTA (con o sin devolucion de stock)
@@ -109,7 +111,7 @@ notasCreditoVentaRouter.post(
         createSalesCreditNote(tx, {
           companyId,
           invoiceId: d.invoiceId,
-          fecha: new Date(d.fecha),
+          fecha: parseFechaDoc(d.fecha),
           motivo: d.motivo ?? null,
           usuarioId: req.auth?.userId ?? null,
           warehouseId: d.warehouseId,
@@ -123,6 +125,7 @@ notasCreditoVentaRouter.post(
       throw err;
     }
 
+    await contabilizar(res, companyId, [{ origenTipo: "NOTA_CREDITO", origenId: nc.id }]);
     res.status(201).json(nc);
   })
 );

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs } from "@/lib/format";
+import { formatGs, hoyYmd } from "@/lib/format";
 import type { CustomerAccount, Customer } from "@/lib/types";
 import { Field, Select } from "@/components/ui/Field";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
@@ -46,7 +46,7 @@ export default function CuentaClientePage() {
       .finally(() => setLoading(false));
   }, [customerId]);
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyYmd();
 
   const movimientosColumns: DataColumn<Movimiento>[] = [
     { header: "Fecha", render: (m) => <span className="text-slate-600">{fmtFecha(m.fecha)}</span> },

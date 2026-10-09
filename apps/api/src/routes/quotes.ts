@@ -6,6 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createQuote } from "../services/quotes.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // PRESUPUESTOS / COTIZACIONES DE VENTA (VENI003)
@@ -40,7 +41,7 @@ presupuestosRouter.post(
         companyId: req.companyId!,
         customerId: d.customerId,
         priceListId: d.priceListId ?? null,
-        fecha: new Date(d.fecha),
+        fecha: parseFechaDoc(d.fecha),
         validezDias: d.validezDias,
         observacion: d.observacion ?? null,
         usuarioId: req.auth?.userId ?? null,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatGs, formatDate } from "@/lib/format";
+import { formatGs, formatDate, toYmdLocal } from "@/lib/format";
 import type { LibroIva } from "@/lib/types";
 import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 // Primer dia del mes actual y hoy, en formato YYYY-MM-DD (para los inputs date).
 function defaultRange() {
   const hoy = new Date();
-  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const ymd = toYmdLocal;
   const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   return { desde: ymd(inicio), hasta: ymd(hoy) };
 }

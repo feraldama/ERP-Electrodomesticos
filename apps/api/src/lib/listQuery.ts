@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 // Helpers compartidos para listados paginados y ordenables por columna.
 //
 // Los endpoints de listado aceptan los query params: page, pageSize, sort, dir.
@@ -156,4 +158,21 @@ export async function listOrPaginate<T>(
   }
   const [items, total] = await Promise.all([findMany({ orderBy, skip, take }), count()]);
   return paginated(items, total, page, pageSize);
+}
+
+/**
+ * Variante de `buildWordSearch` para consultas SQL crudas ($queryRaw), con la
+ * misma semantica: cada palabra de `q` debe aparecer (ILIKE) en alguna de las
+ * `columns`. Las columnas son identificadores SQL de confianza (no input del
+ * usuario); los terminos van parametrizados. Devuelve `TRUE` si no hay busqueda.
+ */
+export function buildWordSearchSql(q: string | undefined, columns: string[]): Prisma.Sql {
+  const terms = q?.trim() ? q.trim().split(/\s+/).filter(Boolean) : [];
+  if (terms.length === 0 || columns.length === 0) return Prisma.sql`TRUE`;
+  const conds = terms.map((term) => {
+    const like = `%${term.replace(/[\%_]/g, (c) => `\${c}`)}%`;
+    const ors = columns.map((col) => Prisma.sql`${Prisma.raw(col)} ILIKE ${like}`);
+    return Prisma.sql`(${Prisma.join(ors, " OR ")})`;
+  });
+  return Prisma.join(conds, " AND ");
 }

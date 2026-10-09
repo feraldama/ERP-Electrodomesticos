@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { CONTABILIDAD_ERROR_EVENT } from "@/lib/api";
 
 type ToastKind = "success" | "error";
 interface Toast {
@@ -21,14 +22,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
-  const notify = useCallback(
-    (kind: ToastKind, message: string) => {
+  const push = useCallback(
+    (kind: ToastKind, message: string, ms: number) => {
       const id = ++counter;
       setToasts((t) => [...t, { id, kind, message }]);
-      setTimeout(() => dismiss(id), 3500);
+      setTimeout(() => dismiss(id), ms);
     },
     [dismiss]
   );
+  const notify = useCallback((kind: ToastKind, message: string) => push(kind, message, 3500), [push]);
+
+  // Aviso global cuando una operacion se guardo pero su asiento contable fallo
+  // (lo emite api() al ver el header del backend). Dura mas: hay que leerlo.
+  useEffect(() => {
+    const onError = (e: Event) =>
+      push("error", `Operacion registrada, pero no se pudo generar el asiento contable: ${(e as CustomEvent<string>).detail}`, 10000);
+    window.addEventListener(CONTABILIDAD_ERROR_EVENT, onError);
+    return () => window.removeEventListener(CONTABILIDAD_ERROR_EVENT, onError);
+  }, [push]);
 
   return (
     <ToastContext.Provider value={{ notify }}>
@@ -39,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role={t.kind === "error" ? "alert" : undefined}
-            className={`flex items-center gap-3 rounded-lg py-3 pl-4 pr-2 text-sm font-medium text-white shadow-lg ${
+            className={`flex max-w-md items-center gap-3 rounded-lg py-3 pl-4 pr-2 text-sm font-medium text-white shadow-lg ${
               t.kind === "success" ? "bg-accent" : "bg-destructive"
             }`}
           >

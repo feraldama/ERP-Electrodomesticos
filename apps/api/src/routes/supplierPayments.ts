@@ -6,6 +6,9 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSupplierPayment } from "../services/payments.js";
+import { assertPeriodoAbierto } from "../services/accounting.js";
+import { contabilizar } from "../lib/contabilizar.js";
+import { parseFechaDoc } from "../lib/fechas.js";
 
 // =====================================================================
 // PAGOS A PROVEEDORES (a cuenta del saldo; las compras no generan cuotas)
@@ -50,13 +53,13 @@ pagosRouter.post(
         createSupplierPayment(tx, {
           companyId,
           supplierId: d.supplierId,
-          fecha: new Date(d.fecha),
+          fecha: parseFechaDoc(d.fecha),
           metodo: d.metodo,
           monto: d.monto,
           observacion: d.observacion ?? null,
           usuarioId: req.auth?.userId ?? null,
           cheque: d.cheque
-            ? { banco: d.cheque.banco ?? null, numero: d.cheque.numero, fechaCobro: new Date(d.cheque.fechaCobro) }
+            ? { banco: d.cheque.banco ?? null, numero: d.cheque.numero, fechaCobro: parseFechaDoc(d.cheque.fechaCobro) }
             : null,
         })
       );
@@ -66,6 +69,7 @@ pagosRouter.post(
       throw err;
     }
 
+    await contabilizar(res, companyId, [{ origenTipo: "PAGO", origenId: payment.id }]);
     res.status(201).json(payment);
   })
 );
@@ -139,6 +143,8 @@ chequesRouter.put(
     const pm = repone && cheque.paymentMadeId
       ? await prisma.paymentMade.findUnique({ where: { id: cheque.paymentMadeId } })
       : null;
+    // La reversa contable se fecha hoy: el ejercicio de hoy debe estar abierto.
+    if (repone && pm) await assertPeriodoAbierto(prisma, req.companyId!, new Date());
 
     await prisma.$transaction(async (tx) => {
       await tx.check.update({ where: { id }, data: { estado } });
@@ -165,6 +171,7 @@ chequesRouter.put(
         });
       }
     });
+    await contabilizar(res, req.companyId!, [{ origenTipo: "CHEQUE_REVERSA", origenId: id }]);
     res.json({ ok: true });
   })
 );

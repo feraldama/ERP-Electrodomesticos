@@ -12,14 +12,14 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: "md" | "lg";
+  size?: "md" | "lg" | "xl";
   /** Si hay cambios sin guardar: pide confirmacion al cerrar por click-afuera o Escape. */
   confirmClose?: boolean;
 }
 
 // Modal sobre Radix Dialog: foco atrapado, cierre con Escape/overlay y accesibilidad.
 export function Modal({ open, onClose, title, children, footer, size = "md", confirmClose }: ModalProps) {
-  const maxW = size === "lg" ? "max-w-2xl" : "max-w-lg";
+  const maxW = size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-2xl" : "max-w-lg";
   const contentRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import type { Article } from "@/lib/types";
 
@@ -16,6 +17,15 @@ interface Props {
   inputRef?: React.Ref<HTMLInputElement>;
 }
 
+const DROPDOWN_MAX_H = 288; // max-h-72
+
+interface Coords {
+  left: number;
+  width: number;
+  top?: number;
+  bottom?: number;
+}
+
 // Busqueda con debounce + dropdown + navegacion por teclado (guia UX de la skill).
 export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo por codigo o descripcion...", rubroId, disabled, inputRef }: Props) {
   const [q, setQ] = useState("");
@@ -23,7 +33,46 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
+  const [coords, setCoords] = useState<Coords | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const updateCoords = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < DROPDOWN_MAX_H && r.top > spaceBelow;
+    setCoords({
+      left: r.left,
+      width: r.width,
+      top: openUp ? undefined : r.bottom + 4,
+      bottom: openUp ? window.innerHeight - r.top + 4 : undefined,
+    });
+  }, []);
+
+  // El dropdown va en un portal (document.body) con posicion fixed para que no lo
+  // recorte el overflow del cuerpo de un Modal. Se reposiciona con scroll/resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateCoords();
+    window.addEventListener("scroll", updateCoords, true);
+    window.addEventListener("resize", updateCoords);
+    return () => {
+      window.removeEventListener("scroll", updateCoords, true);
+      window.removeEventListener("resize", updateCoords);
+    };
+  }, [open, updateCoords]);
+
+  // Fuera del Radix Dialog, el pointerdown sobre una opcion cerraria el Modal
+  // ("click afuera"): se corta su propagacion nativa.
+  useLayoutEffect(() => {
+    const ul = listRef.current;
+    if (!open || !ul) return;
+    const stop = (e: Event) => e.stopPropagation();
+    ul.addEventListener("pointerdown", stop);
+    return () => ul.removeEventListener("pointerdown", stop);
+  }, [open, coords]);
 
   useEffect(() => {
     if (disabled || !q.trim()) {
@@ -50,7 +99,9 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -94,8 +145,12 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
         aria-expanded={open}
         aria-autocomplete="list"
       />
-      {open && (
-        <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-white py-1 shadow-lg">
+      {open && coords && createPortal(
+        <ul
+          ref={listRef}
+          style={{ position: "fixed", left: coords.left, width: coords.width, top: coords.top, bottom: coords.bottom }}
+          className="pointer-events-auto z-[60] max-h-72 overflow-auto rounded-lg border border-border bg-white py-1 shadow-lg"
+        >
           {loading && results.length === 0 ? (
             <li className="px-3 py-2 text-sm text-slate-500">Buscando...</li>
           ) : results.length === 0 ? (
@@ -120,7 +175,8 @@ export function ArticleAutocomplete({ onSelect, placeholder = "Buscar articulo p
               </li>
             ))
           )}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );

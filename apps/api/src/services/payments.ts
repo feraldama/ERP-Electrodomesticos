@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { assertPeriodoAbierto } from "./accounting.js";
 
 export interface CreateSupplierPaymentInput {
   companyId: number;
@@ -37,6 +38,9 @@ const r = (n: number) => Math.round(n);
  *  3) encola el evento contable (PAGO)
  */
 export async function createSupplierPayment(prisma: Prisma.TransactionClient, input: CreateSupplierPaymentInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   const monto = r(input.monto);
   if (monto <= 0) throw new Error("El monto a pagar debe ser mayor a cero");
 
@@ -104,6 +108,9 @@ export async function createSupplierPayment(prisma: Prisma.TransactionClient, in
  *  5) encola el evento contable (COBRO)
  */
 export async function createCollection(prisma: Prisma.TransactionClient, input: CreateCollectionInput) {
+  // Antes de grabar: un ejercicio cerrado no admite la operacion (su asiento nunca se postearia).
+  await assertPeriodoAbierto(prisma, input.companyId, input.fecha);
+
   const ids = input.allocations.map((a) => a.installmentId);
   const installments = await prisma.installment.findMany({
     where: { id: { in: ids }, companyId: input.companyId, invoice: { customerId: input.customerId } },

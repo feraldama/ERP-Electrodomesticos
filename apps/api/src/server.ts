@@ -11,6 +11,7 @@ import { catalogRouter } from "./routes/catalog.js";
 import { articlesRouter, brandsRouter, rubrosRouter, barcodesRouter, serialsRouter } from "./routes/articles.js";
 import { categoriesRouter, unitsRouter } from "./routes/stockCatalogs.js";
 import { warehousesRouter, stockRouter } from "./routes/warehouses.js";
+import { branchesRouter } from "./routes/branches.js";
 import { timbradosRouter, puntosExpedicionRouter } from "./routes/timbrados.js";
 import { personsRouter, customersRouter, suppliersRouter } from "./routes/persons.js";
 import { purchasesRouter } from "./routes/purchases.js";
@@ -23,12 +24,16 @@ import { notasCreditoVentaRouter } from "./routes/salesCreditNotes.js";
 import { notasCreditoCompraRouter } from "./routes/purchaseCreditNotes.js";
 import { rolesRouter, usersRouter, companiesRouter } from "./routes/admin.js";
 import { contabilidadRouter } from "./routes/accounting.js";
+import { transaccionesRouter } from "./routes/transactions.js";
+import { motivosAnulacionRouter } from "./routes/motivosAnulacion.js";
+import { HEADER_CONTABILIDAD_ERROR } from "./lib/contabilizar.js";
+import { postPendingEventsAllCompanies } from "./services/accounting.js";
 import { presupuestosRouter } from "./routes/quotes.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 
 const app = express();
 
-app.use(cors({ origin: env.webOrigin, credentials: true }));
+app.use(cors({ origin: env.webOrigin, credentials: true, exposedHeaders: [HEADER_CONTABILIDAD_ERROR] }));
 app.use(express.json({ limit: "2mb" }));
 
 // Archivos subidos (imagenes de articulos, etc) servidos como estaticos
@@ -50,6 +55,7 @@ app.use("/api/serials", serialsRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/units", unitsRouter);
 app.use("/api/warehouses", warehousesRouter);
+app.use("/api/branches", branchesRouter);
 app.use("/api/stock", stockRouter);
 app.use("/api/timbrados", timbradosRouter);
 app.use("/api/puntos-expedicion", puntosExpedicionRouter);
@@ -71,6 +77,8 @@ app.use("/api/roles", rolesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api/contabilidad", contabilidadRouter);
+app.use("/api/transacciones", transaccionesRouter);
+app.use("/api/motivos-anulacion", motivosAnulacionRouter);
 app.use("/api/presupuestos", presupuestosRouter);
 app.use("/api/dashboard", dashboardRouter);
 
@@ -122,4 +130,6 @@ app.use(
 app.listen(env.port, () => {
   console.log(`API escuchando en http://localhost:${env.port}`);
   console.log(`Health: http://localhost:${env.port}/api/health`);
+  // Reintenta asientos que hayan quedado pendientes (ej. caida tras guardar una operacion).
+  postPendingEventsAllCompanies().catch((err) => console.error("[contabilidad] reintento inicial", err));
 });

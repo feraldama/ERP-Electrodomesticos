@@ -2,6 +2,7 @@ import type { IvaTipo } from "@prisma/client";
 import { prisma } from "../db.js";
 import { HttpError } from "../http.js";
 import { desglosarIvaIncluido } from "./iva.js";
+import { diaContable, periodoDe } from "../lib/fechas.js";
 
 // Claves de cuentas operativas. Cada una se resuelve a una cuenta concreta del plan
 // de la empresa via AccountingConfig (tabla editable), no por codigo fijo. El plan del
@@ -315,6 +316,33 @@ export function computeEntryLines(
     .filter((l) => l.debe > 0 || l.haber > 0);
 }
 
+/**
+ * Importes que genera un evento agrupados por clave operativa (CAJA, CLIENTES,
+ * VENTAS_10...), sin resolver cuentas. Las lineas por categoria se agrupan en su
+ * clave de respaldo. Sirve para saber que funcion cumplia una cuenta en un asiento
+ * ya posteado (ej. reclasificar cuentas de un plan anterior).
+ */
+export function rolesDeEvento(tipo: string, payload: Record<string, unknown>): Array<{ clave: string; debe: number; haber: number }> {
+  const porClave = new Map<string, { debe: number; haber: number }>();
+  for (const l of buildLines(tipo, payload)) {
+    const clave = l.clave ?? l.fallbackClave;
+    if (!clave) continue;
+    const acc = porClave.get(clave) ?? { debe: 0, haber: 0 };
+    acc.debe += r(l.debe);
+    acc.haber += r(l.haber);
+    porClave.set(clave, acc);
+  }
+  return [...porClave.entries()]
+    .map(([clave, v]) => ({ clave, debe: v.debe > v.haber ? v.debe - v.haber : 0, haber: v.haber > v.debe ? v.haber - v.debe : 0 }))
+    .filter((x) => x.debe > 0 || x.haber > 0);
+}
+
+/** Proximo numero correlativo de asiento de la empresa (llamar dentro de la transaccion que lo crea). */
+export async function siguienteNumeroAsiento(tx: Pick<typeof prisma, "accountingEntry">, companyId: number): Promise<number> {
+  const agg = await tx.accountingEntry.aggregate({ where: { companyId }, _max: { numero: true } });
+  return (agg._max.numero ?? 0) + 1;
+}
+
 function glosaDe(tipo: string, p: Record<string, unknown>): string {
   const ref = (p.nroComprobante as string) || (p.numero as string) || "";
   const label: Record<string, string> = {
@@ -386,6 +414,35 @@ export async function getAccountBalances(
     .sort((a, b) => a.codigo.localeCompare(b.codigo));
 }
 
+/**
+ * Rechaza una operacion cuya fecha contable cae en un ejercicio cerrado. Se llama
+ * dentro de la transaccion de cada operacion que genera eventos contables, ANTES
+ * de grabar nada: si no, el documento se guardaria y su asiento nunca podria
+ * postearse. Para anulaciones/reversas se pasa la fecha del dia (asi se fechan).
+ */
+export async function assertPeriodoAbierto(
+  db: Pick<typeof prisma, "fiscalPeriod">,
+  companyId: number,
+  fecha: Date
+): Promise<void> {
+  const dia = diaContable(fecha);
+  const periodo = await db.fiscalPeriod.findFirst({
+    where: { companyId, fechaInicio: { lte: dia }, fechaFin: { gte: dia } },
+    select: { nombre: true, cerrado: true },
+  });
+  if (periodo?.cerrado) {
+    throw new HttpError(409, `El ejercicio "${periodo.nombre}" esta cerrado: no admite operaciones con esa fecha`);
+  }
+}
+
+const colaPorEmpresa = new Map<number, Promise<unknown>>();
+
+/** Documento que origino un evento contable (ej. { origenTipo: "VENTA", origenId: 12 }). */
+export interface OrigenContable {
+  origenTipo: string;
+  origenId: number;
+}
+
 export interface ProcessResult {
   procesados: number;
   errores: number;
@@ -397,8 +454,60 @@ export interface ProcessResult {
  * AccountingEntry con sus lineas (validando que el asiento balancee) y marca el
  * evento como procesado. Idempotente: solo toma procesado=false. Un evento que
  * falla guarda su error y no frena al resto.
+ *
+ * Con `origenes` solo toma los eventos de esos documentos; sin ellos, todos los
+ * pendientes de la empresa (boton manual / reintentos).
+ *
+ * Se serializa por empresa (posteo automatico tras cada operacion + boton manual)
+ * para no competir por los mismos eventos ni por el correlativo de asientos.
  */
-export async function processPendingEvents(companyId: number): Promise<ProcessResult> {
+export function processPendingEvents(companyId: number, origenes?: OrigenContable[]): Promise<ProcessResult> {
+  return enColaContable(companyId, () => runPendingEvents(companyId, origenes));
+}
+
+/**
+ * Ejecuta `fn` en la cola contable de la empresa: todo lo que crea asientos
+ * (posteo de eventos, cierre, reclasificacion) pasa por aca para no pisarse con el
+ * correlativo de numero de asiento.
+ */
+export function enColaContable<T>(companyId: number, fn: () => Promise<T>): Promise<T> {
+  const previo = colaPorEmpresa.get(companyId) ?? Promise.resolve();
+  const actual = previo.catch(() => undefined).then(fn);
+  colaPorEmpresa.set(companyId, actual);
+  actual
+    .finally(() => {
+      if (colaPorEmpresa.get(companyId) === actual) colaPorEmpresa.delete(companyId);
+    })
+    .catch(() => undefined);
+  return actual;
+}
+
+/**
+ * Posteo automatico: se llama despues de confirmar (commit) cada operacion que
+ * genera eventos contables, con los documentos que genero, para que el asiento
+ * quede hecho sin pasar por "Procesar eventos contables". Nunca hace fallar la
+ * operacion: si un evento no se puede postear (ej. cuenta sin configurar) queda
+ * pendiente con su error, que se devuelve para avisarle al usuario. Sin
+ * `origenes` reintenta todos los pendientes de la empresa.
+ */
+export async function postPendingEvents(companyId: number, origenes?: OrigenContable[]): Promise<{ errores: string[] }> {
+  try {
+    const r = await processPendingEvents(companyId, origenes);
+    if (r.errores > 0) console.warn(`[contabilidad] ${r.errores} evento(s) sin postear (empresa ${companyId})`, r.detalleErrores);
+    return { errores: [...new Set(r.detalleErrores.map((d) => d.error))] };
+  } catch (err) {
+    console.error(`[contabilidad] fallo el posteo automatico (empresa ${companyId})`, err);
+    return { errores: ["Fallo inesperado al generar el asiento"] };
+  }
+}
+
+/** Al arrancar: reintenta los pendientes de todas las empresas (ej. tras una caida). */
+export async function postPendingEventsAllCompanies(): Promise<void> {
+  const grupos = await prisma.accountingEvent.groupBy({ by: ["companyId"], where: { procesado: false } });
+  for (const g of grupos) await postPendingEvents(g.companyId);
+}
+
+async function runPendingEvents(companyId: number, origenes?: OrigenContable[]): Promise<ProcessResult> {
   const config = await prisma.accountingConfig.findMany({
     where: { companyId },
     select: { clave: true, accountId: true },
@@ -433,16 +542,15 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
     return null;
   };
 
+  if (origenes && origenes.length === 0) return { procesados: 0, errores: 0, detalleErrores: [] };
   const events = await prisma.accountingEvent.findMany({
-    where: { companyId, procesado: false },
+    where: { companyId, procesado: false, ...(origenes ? { OR: origenes } : {}) },
     orderBy: { id: "asc" },
   });
 
   // Periodos fiscales de la empresa (pocos): para fechar el asiento en su ejercicio
   // y bloquear el posting sobre un periodo ya cerrado.
   const periods = await prisma.fiscalPeriod.findMany({ where: { companyId } });
-  const periodoDe = (fecha: Date) =>
-    periods.find((p) => fecha >= p.fechaInicio && fecha <= p.fechaFin) ?? null;
 
   const result: ProcessResult = { procesados: 0, errores: 0, detalleErrores: [] };
 
@@ -451,8 +559,8 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
       const payload = (ev.payload ?? {}) as Record<string, unknown>;
       // Fecha contable = fecha del documento (si el evento la trae); las reversas /
       // anulaciones no la traen y se fechan el dia del evento (ev.createdAt).
-      const fecha = payload.fecha ? new Date(payload.fecha as string) : ev.createdAt;
-      const periodo = periodoDe(fecha);
+      const fecha = diaContable(payload.fecha ? new Date(payload.fecha as string) : ev.createdAt);
+      const periodo = periodoDe(periods, fecha);
       if (periodo?.cerrado) throw new Error(`El periodo "${periodo.nombre}" esta cerrado; no admite nuevos asientos`);
 
       // Resuelve cada borrador a su cuenta y fusiona por cuenta (varias categorias sin
@@ -463,12 +571,18 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
       if (lines.length === 0) throw new Error("El evento no genero lineas");
       if (totalDebe !== totalHaber) throw new Error(`Asiento descuadrado (debe ${totalDebe} != haber ${totalHaber})`);
 
-      await prisma.$transaction(async (tx) => {
+      const posteado = await prisma.$transaction(async (tx) => {
+        // Reclama el evento: si otro proceso (u otra instancia de la API) ya lo
+        // posteo, no se duplica el asiento.
+        const claim = await tx.accountingEvent.updateMany({
+          where: { id: ev.id, procesado: false },
+          data: { procesado: true, processedAt: new Date(), error: null },
+        });
+        if (claim.count === 0) return false;
         // Numero correlativo por empresa, calculado dentro de la transaccion. La
         // unicidad la garantiza @@unique([companyId, numero]): si dos procesos
         // colisionan, el segundo falla y el evento se reintenta luego.
-        const agg = await tx.accountingEntry.aggregate({ where: { companyId }, _max: { numero: true } });
-        const numeroAsiento = (agg._max.numero ?? 0) + 1;
+        const numeroAsiento = await siguienteNumeroAsiento(tx, companyId);
         const entry = await tx.accountingEntry.create({
           data: {
             companyId,
@@ -483,12 +597,10 @@ export async function processPendingEvents(companyId: number): Promise<ProcessRe
             },
           },
         });
-        await tx.accountingEvent.update({
-          where: { id: ev.id },
-          data: { procesado: true, entryId: entry.id, processedAt: new Date(), error: null },
-        });
+        await tx.accountingEvent.update({ where: { id: ev.id }, data: { entryId: entry.id } });
+        return true;
       });
-      result.procesados += 1;
+      if (posteado) result.procesados += 1;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error desconocido";
       await prisma.accountingEvent.update({ where: { id: ev.id }, data: { error: msg } });
@@ -554,14 +666,13 @@ export async function cerrarEjercicio(companyId: number, periodId: number): Prom
   let numeroAsiento: number | null = null;
   await prisma.$transaction(async (tx) => {
     if (lines.length > 0) {
-      const agg = await tx.accountingEntry.aggregate({ where: { companyId }, _max: { numero: true } });
-      numeroAsiento = (agg._max.numero ?? 0) + 1;
+      numeroAsiento = await siguienteNumeroAsiento(tx, companyId);
       await tx.accountingEntry.create({
         data: {
           companyId,
           periodId,
           numero: numeroAsiento,
-          fecha: periodo.fechaFin,
+          fecha: diaContable(periodo.fechaFin),
           glosa: `Cierre de ejercicio ${periodo.nombre}`,
           origenTipo: "CIERRE",
           origenId: periodId,
