@@ -865,6 +865,7 @@ model SalesInvoice {
 
   @@unique([companyId, establecimiento, puntoExpedicion, numero])
   @@index([companyId, customerId])
+  @@index([companyId, fecha])
   @@map("sales_invoices")
 }
 
@@ -877,10 +878,14 @@ model SalesInvoiceItem {
   descuento      Decimal @default(0) @db.Decimal(18, 4)
   ivaTipo        IvaTipo @default(IVA10)
   total          Decimal @db.Decimal(18, 4)
+  // Costo unitario neto (PMP) del articulo al momento de la venta: base del margen.
+  costoUnitario  Decimal @default(0) @db.Decimal(18, 4)
 
   invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   article Article      @relation(fields: [articleId], references: [id])
 
+  @@index([invoiceId])
+  @@index([articleId])
   @@map("sales_invoice_items")
 }
 
@@ -998,6 +1003,8 @@ model SalesCreditNoteItem {
   creditNote SalesCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
   article    Article         @relation(fields: [articleId], references: [id])
 
+  @@index([creditNoteId])
+  @@index([articleId])
   @@map("sales_credit_note_items")
 }
 

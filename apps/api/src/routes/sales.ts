@@ -6,10 +6,10 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSale, anularSale } from "../services/sales.js";
-import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
+import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch, buildWordSearchSql } from "../lib/listQuery.js";
 import { contabilizar } from "../lib/contabilizar.js";
 import { parseFechaDoc, parseRange } from "../lib/fechas.js";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // =====================================================================
 // LISTAS DE PRECIOS (compartidas entre empresas, como el catalogo)
@@ -376,162 +376,263 @@ salesRouter.get(
 
 // =====================================================================
 // HISTORIAL DE VENTAS POR ARTICULO (VENC012)
-// Una fila por articulo vendido (linea de factura). No cuenta ventas anuladas.
-// Filtros comunes al detalle y al resumen: articulo, marca, categoria, rubro,
-// cliente, sucursal, condicion, rango de fechas y texto libre.
+// Una fila por articulo vendido (linea de factura) y, si se incluyen devoluciones,
+// una fila en negativo por articulo devuelto con nota de credito (ventas netas). No
+// cuenta ventas anuladas. Facturas y NC se combinan en SQL para que paginacion,
+// orden y totales sean exactos. Margen = venta neta sin IVA - costo (PMP al vender).
 // =====================================================================
 const idParam = (v: unknown) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : undefined;
 };
 
-function historialWhere(req: { companyId?: number; query: Record<string, unknown> }): Prisma.SalesInvoiceItemWhereInput {
-  const q = (req.query.q as string | undefined)?.trim();
+// Venta neta sin IVA de una linea (mismo desglose que desglosarIvaIncluido) y su costo.
+const NETO_SQL = `(l.monto - CASE l."ivaTipo" WHEN 'IVA10' THEN ROUND(l.monto / 11) WHEN 'IVA5' THEN ROUND(l.monto / 21) ELSE 0 END)`;
+const COSTO_SQL = `(l.cantidad * l."costoUnitario")`;
+
+const historialOrden: Record<string, string> = {
+  fecha: "l.fecha",
+  comprobante: "l.comprobante",
+  cliente: `p."razonSocial"`,
+  articulo: "a.descripcion",
+  vendedor: "u.nombre",
+  cantidad: "l.cantidad",
+  monto: "l.monto",
+  margen: `(${NETO_SQL} - ${COSTO_SQL})`,
+};
+
+/** CTE `lineas` (ventas + devoluciones) y el FROM/WHERE con los filtros de la consulta. */
+function historialSql(req: { companyId?: number; query: Record<string, unknown> }) {
+  const companyId = req.companyId!;
+  const qp = req.query;
+  const incluirDevoluciones = qp.devoluciones !== "0";
   const fecha = parseRange(req);
-  const condicion = req.query.condicion === "CONTADO" || req.query.condicion === "CREDITO" ? req.query.condicion : undefined;
-  const articleId = idParam(req.query.articleId);
-  const brandId = idParam(req.query.brandId);
-  const categoryId = idParam(req.query.categoryId);
-  const rubroId = idParam(req.query.rubroId);
-  const customerId = idParam(req.query.customerId);
-  const branchId = idParam(req.query.branchId);
-  return {
-    ...(articleId ? { articleId } : {}),
-    invoice: {
-      companyId: req.companyId,
-      estado: { not: "ANULADO" },
-      ...(fecha ? { fecha } : {}),
-      ...(condicion ? { condicion } : {}),
-      ...(customerId ? { customerId } : {}),
-      ...(branchId ? { branchId } : {}),
-    },
-    ...(brandId || categoryId || rubroId
-      ? { article: { ...(brandId ? { brandId } : {}), ...(categoryId ? { categoryId } : {}), ...(rubroId ? { rubroId } : {}) } }
-      : {}),
-    ...buildWordSearch(q, ["article.codigo", "article.descripcion", "invoice.numero", "invoice.customer.person.razonSocial"]),
-  };
+  const condicion = qp.condicion === "CONTADO" || qp.condicion === "CREDITO" ? (qp.condicion as string) : undefined;
+
+  const cte = Prisma.sql`
+    WITH lineas AS (
+      SELECT 'VENTA'::text AS tipo, it.id AS "lineaId", i.id AS "invoiceId", i.fecha,
+             i.establecimiento || '-' || i."puntoExpedicion" || '-' || i.numero AS comprobante,
+             i.condicion::text AS condicion, i."customerId", i."branchId", i."usuarioId",
+             it."articleId", it.cantidad, it."precioUnitario", it.total AS monto,
+             it."ivaTipo"::text AS "ivaTipo", it."costoUnitario"
+        FROM sales_invoice_items it
+        JOIN sales_invoices i ON i.id = it."invoiceId"
+       WHERE i."companyId" = ${companyId} AND i.estado <> 'ANULADO'
+      UNION ALL
+      SELECT 'DEVOLUCION', nci.id, nc."invoiceId", nc.fecha, 'NC ' || nc.numero,
+             i.condicion::text, i."customerId", i."branchId", nc."usuarioId",
+             nci."articleId", -nci.cantidad, nci."precioUnitario", -nci.total,
+             nci."ivaTipo"::text,
+             -- costo de lo devuelto: el de la venta original (o el actual del articulo)
+             COALESCE((SELECT it2."costoUnitario" FROM sales_invoice_items it2
+                        WHERE it2."invoiceId" = nc."invoiceId" AND it2."articleId" = nci."articleId"
+                        ORDER BY it2.id LIMIT 1), a0."costoActual")
+        FROM sales_credit_note_items nci
+        JOIN sales_credit_notes nc ON nc.id = nci."creditNoteId"
+        JOIN articles a0 ON a0.id = nci."articleId"
+        LEFT JOIN sales_invoices i ON i.id = nc."invoiceId"
+       WHERE nc."companyId" = ${companyId} AND ${incluirDevoluciones}
+    )`;
+
+  const conds: Prisma.Sql[] = [Prisma.sql`TRUE`];
+  const num = (k: string) => idParam(qp[k]);
+  if (fecha?.gte) conds.push(Prisma.sql`l.fecha >= ${fecha.gte}`);
+  if (fecha?.lte) conds.push(Prisma.sql`l.fecha <= ${fecha.lte}`);
+  if (num("articleId")) conds.push(Prisma.sql`l."articleId" = ${num("articleId")}`);
+  if (num("brandId")) conds.push(Prisma.sql`a."brandId" = ${num("brandId")}`);
+  if (num("categoryId")) conds.push(Prisma.sql`a."categoryId" = ${num("categoryId")}`);
+  if (num("rubroId")) conds.push(Prisma.sql`a."rubroId" = ${num("rubroId")}`);
+  if (num("customerId")) conds.push(Prisma.sql`l."customerId" = ${num("customerId")}`);
+  if (num("branchId")) conds.push(Prisma.sql`l."branchId" = ${num("branchId")}`);
+  if (num("usuarioId")) conds.push(Prisma.sql`l."usuarioId" = ${num("usuarioId")}`);
+  if (condicion) conds.push(Prisma.sql`l.condicion = ${condicion}`);
+  conds.push(
+    buildWordSearchSql((qp.q as string | undefined)?.trim(), ["a.codigo", "a.descripcion", "l.comprobante", `p."razonSocial"`])
+  );
+
+  const fromWhere = Prisma.sql`
+    FROM lineas l
+    JOIN articles a ON a.id = l."articleId"
+    LEFT JOIN customers c ON c.id = l."customerId"
+    LEFT JOIN persons p ON p.id = c."personId"
+    LEFT JOIN users u ON u.id = l."usuarioId"
+    LEFT JOIN brands b ON b.id = a."brandId"
+    LEFT JOIN categories cat ON cat.id = a."categoryId"
+    WHERE ${Prisma.join(conds, " AND ")}`;
+  return { cte, fromWhere };
 }
 
-const historialSortable = {
-  fecha: "invoice.fecha",
-  comprobante: "invoice.numero",
-  cliente: "invoice.customer.person.razonSocial",
-  articulo: "article.descripcion",
-  cantidad: "cantidad",
-  monto: "total",
-} as const;
+interface FilaHistorial {
+  tipo: "VENTA" | "DEVOLUCION";
+  lineaId: number;
+  invoiceId: number | null;
+  fecha: Date;
+  comprobante: string;
+  condicion: string | null;
+  cliente: string | null;
+  clienteDoc: string | null;
+  vendedor: string | null;
+  articleId: number;
+  codigo: string;
+  descripcion: string;
+  cantidad: Prisma.Decimal;
+  precioUnitario: Prisma.Decimal;
+  monto: Prisma.Decimal;
+  costo: Prisma.Decimal;
+  margen: Prisma.Decimal;
+}
+
+// Filas del detalle (paginadas o, para exportar, todas hasta `take`).
+function filasHistorial(req: { companyId?: number; query: Record<string, unknown> }, take: number, skip: number) {
+  const { cte, fromWhere } = historialSql(req);
+  const sortRaw = String(req.query.sort ?? "");
+  const sort = sortRaw in historialOrden ? sortRaw : "fecha";
+  const dir = req.query.dir === "asc" ? "ASC" : req.query.dir === "desc" ? "DESC" : sort === "fecha" ? "DESC" : "ASC";
+  return prisma.$queryRaw<FilaHistorial[]>`
+    ${cte}
+    SELECT l.tipo, l."lineaId", l."invoiceId", l.fecha, l.comprobante, l.condicion,
+           p."razonSocial" AS cliente, COALESCE(p.ruc, p."nroDoc") AS "clienteDoc", u.nombre AS vendedor,
+           a.id AS "articleId", a.codigo, a.descripcion,
+           l.cantidad, l."precioUnitario", l.monto,
+           ${Prisma.raw(COSTO_SQL)} AS costo, (${Prisma.raw(NETO_SQL)} - ${Prisma.raw(COSTO_SQL)}) AS margen
+    ${fromWhere}
+    ORDER BY ${Prisma.raw(historialOrden[sort])} ${Prisma.raw(dir)}, l."invoiceId" DESC NULLS LAST, l.tipo DESC, l."lineaId"
+    LIMIT ${take} OFFSET ${skip}`;
+}
+
+const filaJson = (f: FilaHistorial) => ({
+  id: `${f.tipo === "VENTA" ? "V" : "D"}${f.lineaId}`,
+  tipo: f.tipo,
+  invoiceId: f.invoiceId,
+  fecha: f.fecha,
+  comprobante: f.comprobante,
+  condicion: f.condicion,
+  cliente: f.cliente,
+  clienteDoc: f.clienteDoc,
+  vendedor: f.vendedor,
+  article: { id: f.articleId, codigo: f.codigo, descripcion: f.descripcion },
+  cantidad: Number(f.cantidad),
+  precioUnitario: Number(f.precioUnitario),
+  monto: Number(f.monto),
+  costo: Math.round(Number(f.costo)),
+  margen: Math.round(Number(f.margen)),
+});
 
 salesRouter.get(
   "/historial-articulos",
   asyncHandler(async (req, res) => {
-    const where = historialWhere(req);
-    const { skip, take, orderBy, sort, dir, page, pageSize } = parseListParams(req.query, {
-      sortable: historialSortable,
+    const { skip, take, page, pageSize } = parseListParams(req.query, {
+      sortable: historialOrden,
       defaultSort: "fecha",
       defaultDir: "desc",
     });
-    // El comprobante se ordena completo: establecimiento-punto-numero.
-    const orden: Prisma.SalesInvoiceItemOrderByWithRelationInput[] =
-      sort === "comprobante"
-        ? [{ invoice: { establecimiento: dir } }, { invoice: { puntoExpedicion: dir } }, { invoice: { numero: dir } }]
-        : [orderBy as Prisma.SalesInvoiceItemOrderByWithRelationInput];
-    const [items, total] = await prisma.$transaction([
-      prisma.salesInvoiceItem.findMany({
-        where,
-        // Desempate estable: misma fecha -> el comprobante mas nuevo primero.
-        orderBy: [...orden, { invoiceId: "desc" }, { id: "asc" }],
-        skip,
-        take,
-        select: {
-          id: true,
-          cantidad: true,
-          precioUnitario: true,
-          total: true,
-          article: { select: { id: true, codigo: true, descripcion: true } },
-          invoice: {
-            select: {
-              id: true,
-              fecha: true,
-              establecimiento: true,
-              puntoExpedicion: true,
-              numero: true,
-              condicion: true,
-              customer: { select: { person: { select: { razonSocial: true, ruc: true, nroDoc: true } } } },
-            },
-          },
-        },
-      }),
-      prisma.salesInvoiceItem.count({ where }),
+    const { cte, fromWhere } = historialSql(req);
+    const [filas, conteo] = await Promise.all([
+      filasHistorial(req, take, skip),
+      prisma.$queryRaw<Array<{ n: bigint }>>`${cte} SELECT COUNT(*) AS n ${fromWhere}`,
     ]);
-    res.json(
-      paginated(
-        items.map((it) => ({
-          id: it.id,
-          invoiceId: it.invoice.id,
-          fecha: it.invoice.fecha,
-          comprobante: `${it.invoice.establecimiento}-${it.invoice.puntoExpedicion}-${it.invoice.numero}`,
-          condicion: it.invoice.condicion,
-          cliente: it.invoice.customer.person.razonSocial,
-          clienteDoc: it.invoice.customer.person.ruc ?? it.invoice.customer.person.nroDoc,
-          article: it.article,
-          cantidad: Number(it.cantidad),
-          precioUnitario: Number(it.precioUnitario),
-          monto: Number(it.total),
-        })),
-        total,
-        page,
-        pageSize
-      )
-    );
+    res.json(paginated(filas.map(filaJson), Number(conteo[0]?.n ?? 0), page, pageSize));
   })
 );
 
-// Resumen con los mismos filtros: totales y ranking por articulo (por monto).
+type Dec = Prisma.Decimal | null;
+
+// Resumen con los mismos filtros: totales, devoluciones, margen y ranking por articulo.
 salesRouter.get(
   "/historial-articulos/resumen",
   asyncHandler(async (req, res) => {
-    const where = historialWhere(req);
-    const [agg, porArticulo, comprobantes, clientes] = await Promise.all([
-      prisma.salesInvoiceItem.aggregate({ where, _sum: { cantidad: true, total: true } }),
-      prisma.salesInvoiceItem.groupBy({
-        by: ["articleId"],
-        where,
-        _sum: { cantidad: true, total: true },
-        _count: { _all: true },
-        orderBy: { _sum: { total: "desc" } },
-        take: 50,
-      }),
-      prisma.salesInvoice.count({ where: { items: { some: where } } }),
-      prisma.salesInvoice.groupBy({ by: ["customerId"], where: { items: { some: where } } }),
+    const { cte, fromWhere } = historialSql(req);
+    const neto = Prisma.raw(NETO_SQL);
+    const costo = Prisma.raw(COSTO_SQL);
+    const [tot, arts] = await Promise.all([
+      prisma.$queryRaw<
+        Array<{ cantidad: Dec; monto: Dec; ventas: Dec; devoluciones: Dec; neto: Dec; costo: Dec; comprobantes: bigint; clientes: bigint }>
+      >`${cte}
+        SELECT SUM(l.cantidad) AS cantidad, SUM(l.monto) AS monto,
+               SUM(l.monto) FILTER (WHERE l.tipo = 'VENTA') AS ventas,
+               SUM(l.monto) FILTER (WHERE l.tipo = 'DEVOLUCION') AS devoluciones,
+               SUM(${neto}) AS neto, SUM(${costo}) AS costo,
+               COUNT(DISTINCT l."invoiceId") FILTER (WHERE l.tipo = 'VENTA') AS comprobantes,
+               COUNT(DISTINCT l."customerId") AS clientes
+        ${fromWhere}`,
+      prisma.$queryRaw<
+        Array<{ articleId: number; codigo: string; descripcion: string; marca: string | null; categoria: string | null; cantidad: Dec; monto: Dec; neto: Dec; costo: Dec; lineas: bigint }>
+      >`${cte}
+        SELECT a.id AS "articleId", a.codigo, a.descripcion, b.nombre AS marca, cat.nombre AS categoria,
+               SUM(l.cantidad) AS cantidad, SUM(l.monto) AS monto, SUM(${neto}) AS neto, SUM(${costo}) AS costo,
+               COUNT(*) FILTER (WHERE l.tipo = 'VENTA') AS lineas
+        ${fromWhere}
+        GROUP BY a.id, a.codigo, a.descripcion, b.nombre, cat.nombre
+        ORDER BY SUM(l.monto) DESC
+        LIMIT 50`,
     ]);
-    const arts = await prisma.article.findMany({
-      where: { id: { in: porArticulo.map((p) => p.articleId) } },
-      select: { id: true, codigo: true, descripcion: true, brand: { select: { nombre: true } }, category: { select: { nombre: true } } },
-    });
-    const artById = new Map(arts.map((a) => [a.id, a]));
-    const monto = Number(agg._sum.total ?? 0);
+    const t = tot[0];
+    const n = (v: Dec | undefined) => Number(v ?? 0);
+    const comprobantes = Number(t?.comprobantes ?? 0);
+    const netoSinIva = Math.round(n(t?.neto));
+    const margen = Math.round(n(t?.neto) - n(t?.costo));
     res.json({
-      cantidad: Number(agg._sum.cantidad ?? 0),
-      monto,
+      cantidad: n(t?.cantidad),
+      monto: n(t?.monto),
+      devoluciones: -n(t?.devoluciones),
+      netoSinIva,
+      costo: Math.round(n(t?.costo)),
+      margen,
+      margenPct: netoSinIva > 0 ? Math.round((margen / netoSinIva) * 1000) / 10 : null,
       comprobantes,
-      clientes: clientes.length,
-      ticketPromedio: comprobantes ? Math.round(monto / comprobantes) : 0,
-      articulos: porArticulo.map((p) => {
-        const a = artById.get(p.articleId);
-        return {
-          articleId: p.articleId,
-          codigo: a?.codigo ?? "",
-          descripcion: a?.descripcion ?? "",
-          marca: a?.brand?.nombre ?? null,
-          categoria: a?.category?.nombre ?? null,
-          cantidad: Number(p._sum.cantidad ?? 0),
-          monto: Number(p._sum.total ?? 0),
-          lineas: p._count._all,
-        };
-      }),
+      clientes: Number(t?.clientes ?? 0),
+      ticketPromedio: comprobantes ? Math.round(n(t?.ventas) / comprobantes) : 0,
+      articulos: arts.map((a) => ({
+        articleId: a.articleId,
+        codigo: a.codigo,
+        descripcion: a.descripcion,
+        marca: a.marca,
+        categoria: a.categoria,
+        cantidad: n(a.cantidad),
+        monto: n(a.monto),
+        margen: Math.round(n(a.neto) - n(a.costo)),
+        lineas: Number(a.lineas),
+      })),
     });
   })
 );
+
+// Vendedores (usuarios que registraron ventas en la empresa), para el filtro.
+salesRouter.get(
+  "/historial-articulos/vendedores",
+  asyncHandler(async (req, res) => {
+    const filas = await prisma.$queryRaw<Array<{ id: number; nombre: string }>>`
+      SELECT DISTINCT u.id, u.nombre FROM sales_invoices i JOIN users u ON u.id = i."usuarioId"
+       WHERE i."companyId" = ${req.companyId!} ORDER BY u.nombre`;
+    res.json(filas);
+  })
+);
+
+// Exportacion a CSV (abre en Excel: separador ";" y BOM UTF-8) con los filtros y el orden aplicados.
+const MAX_EXPORT = 50_000;
+salesRouter.get(
+  "/historial-articulos/exportar",
+  asyncHandler(async (req, res) => {
+    const filas = (await filasHistorial(req, MAX_EXPORT, 0)).map(filaJson);
+    const celda = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const fecha = (d: Date) => d.toISOString().slice(0, 10).split("-").reverse().join("/");
+    const encabezado = ["Tipo", "Fecha", "Comprobante", "Condicion", "Cliente", "RUC/CI", "Vendedor", "Codigo", "Articulo",
+      "Cantidad", "Precio unitario", "Monto", "Costo", "Margen"];
+    const lineas = filas.map((f) =>
+      [f.tipo === "VENTA" ? "Venta" : "Devolucion", fecha(f.fecha), f.comprobante, f.condicion ?? "", f.cliente ?? "",
+        f.clienteDoc ?? "", f.vendedor ?? "", f.article.codigo, f.article.descripcion, f.cantidad,
+        Math.round(f.precioUnitario), Math.round(f.monto), f.costo, f.margen].map(celda).join(";")
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="historial-ventas.csv"`);
+    res.send("﻿" + [encabezado.join(";"), ...lineas].join("\r\n"));
+  })
+);
+
 
 salesRouter.get(
   "/:id",

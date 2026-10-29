@@ -261,6 +261,7 @@ export async function createSale(prisma: Prisma.TransactionClient, input: Create
             precioUnitario: c.precioUnitario,
             ivaTipo: c.ivaTipo,
             total: c.totalLinea,
+            costoUnitario: c.costoActual, // costo neto (PMP) al vender: base del margen
           })),
         },
         payments: {

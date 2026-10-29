@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatGs, IVA_LABEL } from "@/lib/format";
@@ -86,6 +86,12 @@ export default function ListadoVentasPage() {
       /* noop */
     }
   }
+
+  // Permite llegar con una venta ya abierta (ej. desde el historial de ventas: ?id=123).
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("id"));
+    if (id > 0) openDetail(id);
+  }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function anular() {
     if (!detail) return;

@@ -76,6 +76,27 @@ export function assetUrl(path: string | null | undefined): string | null {
   return `${ASSET_ORIGIN}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
+// Descarga un archivo generado por el backend (ej. CSV) con la sesion y empresa activas.
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const finalHeaders: Record<string, string> = {};
+  const token = getToken();
+  if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
+  const companyId = getCompanyId();
+  if (companyId) finalHeaders["X-Company-Id"] = String(companyId);
+
+  const res = await fetch(`${API_URL}${path}`, { headers: finalHeaders });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? "No se pudo descargar el archivo");
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Sube un archivo (multipart) y devuelve la ruta relativa guardada en el server.
 export async function uploadFile(path: string, file: File, field = "imagen"): Promise<{ url: string }> {
   const finalHeaders: Record<string, string> = {};

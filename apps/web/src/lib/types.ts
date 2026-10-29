@@ -386,23 +386,33 @@ export interface ArticlePricesByArticle {
 }
 
 // --- Historial de ventas por articulo (VENC012) ---
+// Una fila por articulo vendido; las devoluciones (NC) vienen en negativo.
 export interface SalesHistoryRow {
-  id: number;
-  invoiceId: number;
+  id: string;
+  tipo: "VENTA" | "DEVOLUCION";
+  invoiceId: number | null;
   fecha: string;
   comprobante: string;
-  condicion: CondicionPago;
-  cliente: string;
+  condicion: CondicionPago | null;
+  cliente: string | null;
   clienteDoc: string | null;
+  vendedor: string | null;
   article: { id: number; codigo: string; descripcion: string };
   cantidad: number;
   precioUnitario: number;
   monto: number;
+  costo: number;
+  margen: number; // venta neta sin IVA - costo
 }
 
 export interface SalesHistorySummary {
   cantidad: number;
-  monto: number;
+  monto: number; // ventas - devoluciones (con IVA)
+  devoluciones: number;
+  netoSinIva: number;
+  costo: number;
+  margen: number;
+  margenPct: number | null;
   comprobantes: number;
   clientes: number;
   ticketPromedio: number;
@@ -414,6 +424,7 @@ export interface SalesHistorySummary {
     categoria: string | null;
     cantidad: number;
     monto: number;
+    margen: number;
     lineas: number;
   }>;
 }

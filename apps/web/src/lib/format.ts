@@ -87,6 +87,12 @@ export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const d = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return "-";
+  // Fecha de documento (comprobantes, asientos, ejercicios): se guarda como medianoche
+  // UTC de ese dia (ver lib/fechas del backend). Se muestra el dia tal cual: pasarla a
+  // hora de Paraguay (UTC-3/-4) la correria al dia anterior.
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0) {
+    return d.toISOString().slice(0, 10).split("-").reverse().join("/");
+  }
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
