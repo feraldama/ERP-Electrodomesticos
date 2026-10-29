@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
+    "seed:asientos-prueba": "tsx prisma/seed-asientos-prueba.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {

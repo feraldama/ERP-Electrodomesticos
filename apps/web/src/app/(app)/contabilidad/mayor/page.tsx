@@ -24,6 +24,12 @@ export default function LibroMayorPage() {
       .catch(() => setCuentas([]));
   }, [companyId]);
 
+  // Permite llegar con la cuenta ya elegida (ej. desde el plan de cuentas).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("accountId");
+    if (id) setAccountId(id);
+  }, []);
+
   useEffect(() => {
     if (!accountId) {
       setData(null);

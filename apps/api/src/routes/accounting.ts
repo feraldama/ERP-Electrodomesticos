@@ -15,16 +15,77 @@ import { enColaContable, postPendingEvents, processPendingEvents, getAccountBala
 export const contabilidadRouter = Router();
 contabilidadRouter.use(authRequired, companyRequired);
 
-// Plan de cuentas (CONM001) - vista
+// Plan de cuentas (CONM001) - vista. Incluye la suma debe/haber de los movimientos
+// propios de cada cuenta; el front acumula los totales de los grupos por el arbol.
 contabilidadRouter.get(
   "/plan-cuentas",
   asyncHandler(async (req, res) => {
-    const cuentas = await prisma.chartOfAccount.findMany({
+    const [cuentas, sumas] = await Promise.all([
+      prisma.chartOfAccount.findMany({
+        where: { companyId: req.companyId },
+        orderBy: { codigo: "asc" },
+        select: { id: true, codigo: true, nombre: true, tipo: true, imputable: true, parentId: true, activo: true },
+      }),
+      prisma.accountingEntryLine.groupBy({
+        by: ["accountId"],
+        where: { entry: { companyId: req.companyId } },
+        _sum: { debe: true, haber: true },
+      }),
+    ]);
+    const byId = new Map(sumas.map((s) => [s.accountId, s._sum]));
+    res.json(
+      cuentas.map((c) => {
+        const s = byId.get(c.id);
+        return { ...c, debe: Number(s?.debe ?? 0), haber: Number(s?.haber ?? 0) };
+      })
+    );
+  })
+);
+
+// Ultimos movimientos de una cuenta (CONM001, panel de detalle). Si es un grupo,
+// incluye los de todas sus subcuentas.
+contabilidadRouter.get(
+  "/plan-cuentas/:id/movimientos",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw new HttpError(404, "Cuenta no encontrada");
+    const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 50);
+    const todas = await prisma.chartOfAccount.findMany({
       where: { companyId: req.companyId },
-      orderBy: { codigo: "asc" },
-      select: { id: true, codigo: true, nombre: true, tipo: true, imputable: true, parentId: true, activo: true },
+      select: { id: true, parentId: true },
     });
-    res.json(cuentas);
+    if (!todas.some((c) => c.id === id)) throw new HttpError(404, "Cuenta no encontrada");
+
+    const hijos = new Map<number, number[]>();
+    for (const c of todas) if (c.parentId) hijos.set(c.parentId, [...(hijos.get(c.parentId) ?? []), c.id]);
+    const ids: number[] = [];
+    const pila = [id];
+    while (pila.length) {
+      const x = pila.pop()!;
+      ids.push(x);
+      pila.push(...(hijos.get(x) ?? []));
+    }
+
+    const lines = await prisma.accountingEntryLine.findMany({
+      where: { accountId: { in: ids }, entry: { companyId: req.companyId } },
+      include: {
+        entry: { select: { fecha: true, numero: true, glosa: true } },
+        account: { select: { codigo: true, nombre: true } },
+      },
+      orderBy: [{ entry: { fecha: "desc" } }, { id: "desc" }],
+      take: limit,
+    });
+    res.json(
+      lines.map((l) => ({
+        id: l.id,
+        fecha: l.entry.fecha,
+        numero: l.entry.numero,
+        glosa: l.detalle || l.entry.glosa,
+        debe: Number(l.debe),
+        haber: Number(l.haber),
+        cuenta: l.accountId === id ? null : { codigo: l.account.codigo, nombre: l.account.nombre },
+      }))
+    );
   })
 );
 

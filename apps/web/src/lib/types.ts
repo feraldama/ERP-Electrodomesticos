@@ -502,6 +502,20 @@ export interface ChartAccount {
   imputable: boolean;
   parentId: number | null;
   activo: boolean;
+  // Suma de los movimientos propios (no incluye subcuentas). Solo en /plan-cuentas.
+  debe?: number;
+  haber?: number;
+}
+
+export interface ChartAccountMovimiento {
+  id: number;
+  fecha: string;
+  numero: number | null;
+  glosa: string;
+  debe: number;
+  haber: number;
+  // Subcuenta del movimiento cuando se consulta un grupo; null si es la propia cuenta.
+  cuenta: { codigo: string; nombre: string } | null;
 }
 
 export interface AccountingLine {
