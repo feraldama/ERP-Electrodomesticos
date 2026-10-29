@@ -33,7 +33,7 @@ Inspirado en el estilo de Century Shift: modulos en tarjetas y, dentro de cada m
 │   ├── api/        # Express + Prisma (backend)
 │   └── web/        # Next.js (frontend)
 ├── packages/       # codigo compartido (a futuro)
-├── docs/           # arquitectura y modelo de datos
+├── docs/           # documentacion local (no se versiona)
 └── docker-compose.yml
 ```
 
@@ -86,4 +86,4 @@ Usuario inicial (tras el seed): **admin / admin123**.
 | `pnpm db:seed`     | Pobla datos iniciales                     |
 | `pnpm db:studio`   | Abre Prisma Studio                        |
 
-Ver [`docs/`](./docs) para la arquitectura y el modelo de datos en detalle.
+La documentacion de arquitectura, modelo de datos y manuales vive en `docs/`, que es local y no se versiona.

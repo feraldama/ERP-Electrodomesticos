@@ -52,3 +52,6 @@ Thumbs.db
 # Uploads / temporales
 uploads/
 tmp/
+
+# Documentacion local (manuales, capturas, notas): no se versiona
+docs/
