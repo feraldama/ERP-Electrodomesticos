@@ -15,23 +15,24 @@ import { enColaContable, postPendingEvents, processPendingEvents, getAccountBala
 export const contabilidadRouter = Router();
 contabilidadRouter.use(authRequired, companyRequired);
 
-// Plan de cuentas (CONM001) - vista. Incluye la suma debe/haber de los movimientos
-// propios de cada cuenta; el front acumula los totales de los grupos por el arbol.
+// Plan de cuentas (CONM001) - vista. Con ?saldos=1 incluye la suma debe/haber de los
+// movimientos propios de cada cuenta (el front acumula los grupos por el arbol); sin el
+// parametro no se recorren los asientos (lo usan los selects de cuentas de otras pantallas).
 contabilidadRouter.get(
   "/plan-cuentas",
   asyncHandler(async (req, res) => {
-    const [cuentas, sumas] = await Promise.all([
-      prisma.chartOfAccount.findMany({
-        where: { companyId: req.companyId },
-        orderBy: { codigo: "asc" },
-        select: { id: true, codigo: true, nombre: true, tipo: true, imputable: true, parentId: true, activo: true },
-      }),
-      prisma.accountingEntryLine.groupBy({
-        by: ["accountId"],
-        where: { entry: { companyId: req.companyId } },
-        _sum: { debe: true, haber: true },
-      }),
-    ]);
+    const cuentas = await prisma.chartOfAccount.findMany({
+      where: { companyId: req.companyId },
+      orderBy: { codigo: "asc" },
+      select: { id: true, codigo: true, nombre: true, tipo: true, imputable: true, parentId: true, activo: true },
+    });
+    if (req.query.saldos !== "1") return res.json(cuentas);
+
+    const sumas = await prisma.accountingEntryLine.groupBy({
+      by: ["accountId"],
+      where: { entry: { companyId: req.companyId } },
+      _sum: { debe: true, haber: true },
+    });
     const byId = new Map(sumas.map((s) => [s.accountId, s._sum]));
     res.json(
       cuentas.map((c) => {

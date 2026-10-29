@@ -8,7 +8,8 @@ import { requirePermission } from "../middleware/permission.js";
 import { createSale, anularSale } from "../services/sales.js";
 import { parseListParams, paginated, wantsPagination, listOrPaginate, buildWordSearch } from "../lib/listQuery.js";
 import { contabilizar } from "../lib/contabilizar.js";
-import { parseFechaDoc } from "../lib/fechas.js";
+import { parseFechaDoc, parseRange } from "../lib/fechas.js";
+import type { Prisma } from "@prisma/client";
 
 // =====================================================================
 // LISTAS DE PRECIOS (compartidas entre empresas, como el catalogo)
@@ -370,6 +371,165 @@ salesRouter.get(
       prisma.salesInvoice.count({ where }),
     ]);
     res.json(paginated(items, total, page, pageSize));
+  })
+);
+
+// =====================================================================
+// HISTORIAL DE VENTAS POR ARTICULO (VENC012)
+// Una fila por articulo vendido (linea de factura). No cuenta ventas anuladas.
+// Filtros comunes al detalle y al resumen: articulo, marca, categoria, rubro,
+// cliente, sucursal, condicion, rango de fechas y texto libre.
+// =====================================================================
+const idParam = (v: unknown) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
+
+function historialWhere(req: { companyId?: number; query: Record<string, unknown> }): Prisma.SalesInvoiceItemWhereInput {
+  const q = (req.query.q as string | undefined)?.trim();
+  const fecha = parseRange(req);
+  const condicion = req.query.condicion === "CONTADO" || req.query.condicion === "CREDITO" ? req.query.condicion : undefined;
+  const articleId = idParam(req.query.articleId);
+  const brandId = idParam(req.query.brandId);
+  const categoryId = idParam(req.query.categoryId);
+  const rubroId = idParam(req.query.rubroId);
+  const customerId = idParam(req.query.customerId);
+  const branchId = idParam(req.query.branchId);
+  return {
+    ...(articleId ? { articleId } : {}),
+    invoice: {
+      companyId: req.companyId,
+      estado: { not: "ANULADO" },
+      ...(fecha ? { fecha } : {}),
+      ...(condicion ? { condicion } : {}),
+      ...(customerId ? { customerId } : {}),
+      ...(branchId ? { branchId } : {}),
+    },
+    ...(brandId || categoryId || rubroId
+      ? { article: { ...(brandId ? { brandId } : {}), ...(categoryId ? { categoryId } : {}), ...(rubroId ? { rubroId } : {}) } }
+      : {}),
+    ...buildWordSearch(q, ["article.codigo", "article.descripcion", "invoice.numero", "invoice.customer.person.razonSocial"]),
+  };
+}
+
+const historialSortable = {
+  fecha: "invoice.fecha",
+  comprobante: "invoice.numero",
+  cliente: "invoice.customer.person.razonSocial",
+  articulo: "article.descripcion",
+  cantidad: "cantidad",
+  monto: "total",
+} as const;
+
+salesRouter.get(
+  "/historial-articulos",
+  asyncHandler(async (req, res) => {
+    const where = historialWhere(req);
+    const { skip, take, orderBy, sort, dir, page, pageSize } = parseListParams(req.query, {
+      sortable: historialSortable,
+      defaultSort: "fecha",
+      defaultDir: "desc",
+    });
+    // El comprobante se ordena completo: establecimiento-punto-numero.
+    const orden: Prisma.SalesInvoiceItemOrderByWithRelationInput[] =
+      sort === "comprobante"
+        ? [{ invoice: { establecimiento: dir } }, { invoice: { puntoExpedicion: dir } }, { invoice: { numero: dir } }]
+        : [orderBy as Prisma.SalesInvoiceItemOrderByWithRelationInput];
+    const [items, total] = await prisma.$transaction([
+      prisma.salesInvoiceItem.findMany({
+        where,
+        // Desempate estable: misma fecha -> el comprobante mas nuevo primero.
+        orderBy: [...orden, { invoiceId: "desc" }, { id: "asc" }],
+        skip,
+        take,
+        select: {
+          id: true,
+          cantidad: true,
+          precioUnitario: true,
+          total: true,
+          article: { select: { id: true, codigo: true, descripcion: true } },
+          invoice: {
+            select: {
+              id: true,
+              fecha: true,
+              establecimiento: true,
+              puntoExpedicion: true,
+              numero: true,
+              condicion: true,
+              customer: { select: { person: { select: { razonSocial: true, ruc: true, nroDoc: true } } } },
+            },
+          },
+        },
+      }),
+      prisma.salesInvoiceItem.count({ where }),
+    ]);
+    res.json(
+      paginated(
+        items.map((it) => ({
+          id: it.id,
+          invoiceId: it.invoice.id,
+          fecha: it.invoice.fecha,
+          comprobante: `${it.invoice.establecimiento}-${it.invoice.puntoExpedicion}-${it.invoice.numero}`,
+          condicion: it.invoice.condicion,
+          cliente: it.invoice.customer.person.razonSocial,
+          clienteDoc: it.invoice.customer.person.ruc ?? it.invoice.customer.person.nroDoc,
+          article: it.article,
+          cantidad: Number(it.cantidad),
+          precioUnitario: Number(it.precioUnitario),
+          monto: Number(it.total),
+        })),
+        total,
+        page,
+        pageSize
+      )
+    );
+  })
+);
+
+// Resumen con los mismos filtros: totales y ranking por articulo (por monto).
+salesRouter.get(
+  "/historial-articulos/resumen",
+  asyncHandler(async (req, res) => {
+    const where = historialWhere(req);
+    const [agg, porArticulo, comprobantes, clientes] = await Promise.all([
+      prisma.salesInvoiceItem.aggregate({ where, _sum: { cantidad: true, total: true } }),
+      prisma.salesInvoiceItem.groupBy({
+        by: ["articleId"],
+        where,
+        _sum: { cantidad: true, total: true },
+        _count: { _all: true },
+        orderBy: { _sum: { total: "desc" } },
+        take: 50,
+      }),
+      prisma.salesInvoice.count({ where: { items: { some: where } } }),
+      prisma.salesInvoice.groupBy({ by: ["customerId"], where: { items: { some: where } } }),
+    ]);
+    const arts = await prisma.article.findMany({
+      where: { id: { in: porArticulo.map((p) => p.articleId) } },
+      select: { id: true, codigo: true, descripcion: true, brand: { select: { nombre: true } }, category: { select: { nombre: true } } },
+    });
+    const artById = new Map(arts.map((a) => [a.id, a]));
+    const monto = Number(agg._sum.total ?? 0);
+    res.json({
+      cantidad: Number(agg._sum.cantidad ?? 0),
+      monto,
+      comprobantes,
+      clientes: clientes.length,
+      ticketPromedio: comprobantes ? Math.round(monto / comprobantes) : 0,
+      articulos: porArticulo.map((p) => {
+        const a = artById.get(p.articleId);
+        return {
+          articleId: p.articleId,
+          codigo: a?.codigo ?? "",
+          descripcion: a?.descripcion ?? "",
+          marca: a?.brand?.nombre ?? null,
+          categoria: a?.category?.nombre ?? null,
+          cantidad: Number(p._sum.cantidad ?? 0),
+          monto: Number(p._sum.total ?? 0),
+          lineas: p._count._all,
+        };
+      }),
+    });
   })
 );
 

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
-import type { Person, PersonRole, TipoDoc } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import type { ChartAccount, Person, PersonRole, TipoDoc } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -42,6 +43,7 @@ interface FormState {
   diasCredito: string;
   cargo: string;
   salario: string;
+  cuentaProveedorId: string;
 }
 
 const EMPTY: FormState = {
@@ -62,6 +64,7 @@ const EMPTY: FormState = {
   diasCredito: "0",
   cargo: "",
   salario: "0",
+  cuentaProveedorId: "",
 };
 
 function fromPerson(p: Person): FormState {
@@ -83,6 +86,7 @@ function fromPerson(p: Person): FormState {
     diasCredito: String(p.customer?.diasCredito ?? 0),
     cargo: p.employee?.cargo ?? "",
     salario: p.employee?.salario ?? "0",
+    cuentaProveedorId: p.cuentaProveedor ? String(p.cuentaProveedor.id) : "",
   };
 }
 
@@ -103,6 +107,18 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Cuentas de pasivo imputables de la empresa activa: se cargan al marcar el rol de
+  // proveedor y se recargan si cambia la empresa (el plan de cuentas es por empresa).
+  const { companyId } = useAuth();
+  const [pasivo, setPasivo] = useState<{ companyId: number | null; cuentas: ChartAccount[] } | null>(null);
+  const cuentasPasivo = pasivo?.companyId === companyId ? pasivo.cuentas : null;
+
+  useEffect(() => {
+    if (!open || !form.esProveedor || cuentasPasivo) return;
+    api<ChartAccount[]>("/contabilidad/plan-cuentas")
+      .then((cs) => setPasivo({ companyId, cuentas: cs.filter((c) => c.tipo === "PASIVO" && c.imputable && c.activo) }))
+      .catch(() => setPasivo({ companyId, cuentas: [] }));
+  }, [open, form.esProveedor, cuentasPasivo, companyId]);
 
   // Inicializa el form al abrir (desde la persona en edicion o vacio con rol preseleccionado).
   useEffect(() => {
@@ -175,6 +191,7 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
       diasCredito: Number(form.diasCredito) || 0,
       cargo: form.cargo.trim() || null,
       salario: Number(form.salario) || 0,
+      ...(form.esProveedor ? { cuentaProveedorId: form.cuentaProveedorId ? Number(form.cuentaProveedorId) : null } : {}),
     };
     try {
       const saved = editing
@@ -302,6 +319,26 @@ export function PersonFormModal({ open, onClose, onSaved, editing = null, role =
               <Field label="Dias de credito" htmlFor="dias">
                 <Input id="dias" type="number" min={0} value={form.diasCredito} onChange={(e) => set("diasCredito", e.target.value)} />
               </Field>
+            </div>
+          )}
+          {form.esProveedor && (
+            <div className="mt-4 border-t border-border pt-4">
+              <Field label="Cuenta contable para compras a credito" htmlFor="cuentaProv">
+                <Select id="cuentaProv" value={form.cuentaProveedorId} onChange={(e) => set("cuentaProveedorId", e.target.value)}>
+                  <option value="">— Cuenta general de proveedores —</option>
+                  {/* La cuenta guardada se ofrece aunque ya no este en la lista (ej. inactivada). */}
+                  {editing?.cuentaProveedor && !cuentasPasivo?.some((c) => c.id === editing.cuentaProveedor!.id) && (
+                    <option value={editing.cuentaProveedor.id}>{editing.cuentaProveedor.codigo} - {editing.cuentaProveedor.nombre}</option>
+                  )}
+                  {(cuentasPasivo ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                  ))}
+                </Select>
+              </Field>
+              <p className="mt-1 text-xs text-slate-500">
+                La deuda por compras a credito de este proveedor (y sus pagos) se registra en esta cuenta de pasivo.
+                Sin asignar, se usa la cuenta de Proveedores de la configuracion contable.
+              </p>
             </div>
           )}
           {form.esEmpleado && (

@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { IvaTipo, Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { crearSeriesCompra, eliminarSeriesCompra } from "./serials.js";
+import { assertChequeEmitible } from "./payments.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto, cuentaProveedorDeCompra, cuentaProveedorId } from "./accounting.js";
 
 export interface PurchaseItemInput {
   articleId: number;
@@ -31,6 +32,20 @@ export interface CreatePurchaseInput {
   observacion?: string | null;
   usuarioId?: number | null;
   items: PurchaseItemInput[];
+  // CONTADO: como se pago (deben sumar el total). Sin pagos se asume todo en efectivo.
+  pagos?: PurchasePagoInput[];
+  // CREDITO: cronograma de vencimientos acordado (debe sumar el total). Opcional.
+  cuotas?: Array<{ fechaVencimiento: Date; monto: number }>;
+}
+
+export type MedioPagoCompra = "EFECTIVO" | "TRANSFERENCIA" | "CHEQUE";
+
+export interface PurchasePagoInput {
+  medio: MedioPagoCompra;
+  monto: number;
+  banco?: string | null;
+  referencia?: string | null; // nro de transferencia o de cheque
+  fechaCobro?: Date | null; // cheque: fecha de cobro (diferido)
 }
 
 // Redondeo a entero (Guaranies sin decimales)
@@ -128,6 +143,31 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
 
   const total = subtotalExenta + subtotal5 + subtotal10 + iva5 + iva10;
 
+  // --- Forma de pago (contado) o condicion de pago (credito) ---
+  const pagos =
+    input.condicion === "CONTADO"
+      ? (input.pagos?.length ? input.pagos : [{ medio: "EFECTIVO" as const, monto: total }]).map((p) => ({ ...p, monto: r(p.monto) }))
+      : [];
+  if (pagos.some((p) => p.monto <= 0)) throw new Error("Cada pago debe tener un monto mayor a cero");
+  if (pagos.length && pagos.reduce((s, p) => s + p.monto, 0) !== r(total)) {
+    throw new Error(`Los pagos deben sumar el total de la compra (${r(total)})`);
+  }
+  const cheques = pagos.filter((p) => p.medio === "CHEQUE");
+  for (const p of cheques) {
+    if (!p.referencia?.trim() || !p.fechaCobro) throw new Error("Para pagar con cheque indica el numero y la fecha de cobro");
+    await assertChequeEmitible(prisma, input.companyId, { numero: p.referencia, banco: p.banco, fechaCobro: p.fechaCobro }, input.fecha);
+  }
+  const claveCheque = (p: PurchasePagoInput) => `${p.referencia?.trim()}|${(p.banco ?? "").trim().toLowerCase()}`;
+  if (new Set(cheques.map(claveCheque)).size !== cheques.length) {
+    throw new Error("El mismo cheque esta cargado dos veces en la compra");
+  }
+  const cuotas = input.condicion === "CREDITO" ? (input.cuotas ?? []).map((c) => ({ ...c, monto: r(c.monto) })) : [];
+  if (cuotas.some((c) => c.monto <= 0)) throw new Error("Cada cuota debe tener un monto mayor a cero");
+  if (cuotas.some((c) => c.fechaVencimiento < input.fecha)) throw new Error("Los vencimientos no pueden ser anteriores a la fecha de la compra");
+  if (cuotas.length && cuotas.reduce((s, c) => s + c.monto, 0) !== r(total)) {
+    throw new Error(`Las cuotas deben sumar el total de la compra (${r(total)})`);
+  }
+
   // --- Validacion de series para articulos que controlan serie/IMEI ---
   const articleIds = [...new Set(input.items.map((i) => i.articleId))];
   const arts = await prisma.article.findMany({
@@ -180,8 +220,42 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
           importeExenta: importeDe(c.partes, "EXENTA"),
         })),
       },
+      payments: {
+        create: pagos.map((p) => ({
+          companyId: input.companyId,
+          medio: p.medio,
+          monto: p.monto,
+          banco: p.banco?.trim() || null,
+          referencia: p.referencia?.trim() || null,
+        })),
+      },
+      installments: {
+        create: cuotas.map((c, i) => ({
+          companyId: input.companyId,
+          nroCuota: i + 1,
+          fechaVencimiento: c.fechaVencimiento,
+          monto: c.monto,
+        })),
+      },
     },
   });
+
+  // Pago con cheque: registra el cheque EMITIDO (diferido), ligado a la compra.
+  for (const p of pagos.filter((x) => x.medio === "CHEQUE")) {
+    await prisma.check.create({
+      data: {
+        companyId: input.companyId,
+        tipo: "EMITIDO",
+        banco: p.banco?.trim() || null,
+        numero: p.referencia!.trim(),
+        monto: p.monto,
+        fechaEmision: input.fecha,
+        fechaCobro: p.fechaCobro!,
+        estado: "PENDIENTE",
+        purchaseInvoiceId: invoice.id,
+      },
+    });
+  }
 
   // --- 2,3) Stock + costo por cada item ---
   const loteId = randomUUID();
@@ -290,6 +364,11 @@ export async function createPurchase(prisma: Prisma.TransactionClient, input: Cr
         iva5,
         iva10,
         total,
+        // Contado: la salida de fondos se imputa por medio (efectivo/transferencia/cheque).
+        pagos: pagos.map((p) => ({ medio: p.medio, monto: p.monto })),
+        // Credito: la deuda va a la cuenta propia del proveedor (si tiene) o a PROVEEDORES.
+        cuentaProveedorId:
+          input.condicion === "CREDITO" ? await cuentaProveedorId(prisma, input.companyId, input.supplierId) : null,
         categorias: agruparPorCategoria(
           computed.flatMap((c) =>
             c.partes.map((p) => ({ categoryId: artById.get(c.articleId)?.categoryId ?? null, ivaTipo: p.ivaTipo, total: p.total }))
@@ -325,10 +404,13 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
 
   const invoice = await prisma.purchaseInvoice.findFirst({
     where: { id: input.invoiceId, companyId: input.companyId },
-    include: { items: true },
+    include: { items: true, payments: true, checks: true },
   });
   if (!invoice) throw new Error("Compra no encontrada");
   if (invoice.estado === "ANULADO") throw new Error("La compra ya esta anulada");
+  if (invoice.checks.some((c) => c.estado !== "PENDIENTE" && c.estado !== "ANULADO")) {
+    throw new Error("La compra se pago con un cheque ya cobrado o rechazado; no se puede anular");
+  }
 
   const ncCount = await prisma.purchaseCreditNote.count({ where: { invoiceId: invoice.id } });
   if (ncCount > 0) throw new Error("La compra tiene notas de credito; no se puede anular");
@@ -384,6 +466,12 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
     });
   }
 
+  // Los cheques entregados que aun no se cobraron quedan anulados junto con la compra.
+  await prisma.check.updateMany({
+    where: { purchaseInvoiceId: invoice.id, estado: "PENDIENTE" },
+    data: { estado: "ANULADO" },
+  });
+
   // 3) Evento contable de reversa
   await prisma.accountingEvent.create({
     data: {
@@ -400,6 +488,10 @@ export async function anularPurchase(prisma: Prisma.TransactionClient, input: An
         iva5: invoice.iva5,
         iva10: invoice.iva10,
         total: invoice.total,
+        // Reversa contra los mismos medios con que se pago (compras viejas: sin desglose -> CAJA).
+        pagos: invoice.payments.map((p) => ({ medio: p.medio, monto: Number(p.monto) })),
+        cuentaProveedorId:
+          invoice.condicion === "CREDITO" ? await cuentaProveedorDeCompra(prisma, input.companyId, invoice) : null,
         categorias,
       },
     },

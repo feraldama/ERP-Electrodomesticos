@@ -143,7 +143,7 @@ export default function PlanCuentasPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api<ChartAccount[]>("/contabilidad/plan-cuentas")
+    api<ChartAccount[]>("/contabilidad/plan-cuentas?saldos=1")
       .then(setCuentas)
       .catch(() => setCuentas([]))
       .finally(() => setLoading(false));

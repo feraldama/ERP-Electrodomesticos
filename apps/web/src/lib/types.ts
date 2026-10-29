@@ -270,6 +270,8 @@ export interface Person {
   esEmpleado: boolean;
   customer?: { limiteCredito: string; diasCredito: number; activo: boolean } | null;
   employee?: { cargo: string | null; salario: string | null; activo: boolean } | null;
+  // Cuenta contable para compras a credito del proveedor (empresa activa); null = PROVEEDORES.
+  cuentaProveedor?: { id: number; codigo: string; nombre: string } | null;
 }
 
 export type PersonRole = "customer" | "supplier" | "employee" | null;
@@ -323,6 +325,10 @@ export interface PurchaseInvoice {
   observacion: string | null;
   supplier?: { person: { razonSocial: string } };
   items?: PurchaseItem[];
+  // Solo en el detalle (/purchases/:id)
+  payments?: Array<{ id: number; medio: "EFECTIVO" | "TRANSFERENCIA" | "CHEQUE"; monto: string; banco: string | null; referencia: string | null }>;
+  installments?: Array<{ id: number; nroCuota: number; fechaVencimiento: string; monto: string }>;
+  checks?: Array<{ id: number; numero: string; estado: string; fechaCobro: string }>;
 }
 
 export interface Unit {
@@ -377,6 +383,39 @@ export interface ArticlePricesByArticle {
     rubro: { id: number; nombre: string } | null;
   };
   lists: ArticlePriceByList[];
+}
+
+// --- Historial de ventas por articulo (VENC012) ---
+export interface SalesHistoryRow {
+  id: number;
+  invoiceId: number;
+  fecha: string;
+  comprobante: string;
+  condicion: CondicionPago;
+  cliente: string;
+  clienteDoc: string | null;
+  article: { id: number; codigo: string; descripcion: string };
+  cantidad: number;
+  precioUnitario: number;
+  monto: number;
+}
+
+export interface SalesHistorySummary {
+  cantidad: number;
+  monto: number;
+  comprobantes: number;
+  clientes: number;
+  ticketPromedio: number;
+  articulos: Array<{
+    articleId: number;
+    codigo: string;
+    descripcion: string;
+    marca: string | null;
+    categoria: string | null;
+    cantidad: number;
+    monto: number;
+    lineas: number;
+  }>;
 }
 
 export interface Customer {
@@ -502,7 +541,7 @@ export interface ChartAccount {
   imputable: boolean;
   parentId: number | null;
   activo: boolean;
-  // Suma de los movimientos propios (no incluye subcuentas). Solo en /plan-cuentas.
+  // Suma de los movimientos propios (no incluye subcuentas). Solo con /plan-cuentas?saldos=1.
   debe?: number;
   haber?: number;
 }

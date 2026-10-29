@@ -3,7 +3,9 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler, HttpError } from "../http.js";
 import { authRequired } from "../middleware/auth.js";
+import { companyOptional } from "../middleware/company.js";
 import { requireAnyPermission } from "../middleware/permission.js";
+import type { Prisma } from "@prisma/client";
 import { rucDesdeCedula } from "../services/ruc.js";
 import { parseListParams, paginated, wantsPagination, buildWordSearch } from "../lib/listQuery.js";
 import { diaContable, parseFechaDoc } from "../lib/fechas.js";
@@ -19,9 +21,24 @@ function resolverRuc(ruc: string | null | undefined, nroDoc: string | undefined)
 }
 
 export const personsRouter = Router();
-personsRouter.use(authRequired);
+// Las personas son globales; la empresa (opcional) solo define la cuenta contable del proveedor.
+personsRouter.use(authRequired, companyOptional);
 
-const personInclude = { customer: true, supplier: true, employee: true } as const;
+// Incluye la cuenta contable del proveedor en la empresa activa (si hay empresa).
+function personInclude(companyId: number | undefined) {
+  return {
+    customer: true,
+    supplier: {
+      include: {
+        accountConfigs: {
+          where: { companyId: companyId ?? -1 },
+          select: { account: { select: { id: true, codigo: true, nombre: true } } },
+        },
+      },
+    },
+    employee: true,
+  } satisfies Prisma.PersonInclude;
+}
 
 // Persona + flags de rol para el frontend
 function serialize(p: {
@@ -30,14 +47,48 @@ function serialize(p: {
   employee: unknown;
 } & Record<string, unknown>) {
   const customer = p.customer as { activo: boolean } | null;
-  const supplier = p.supplier as { activo: boolean } | null;
+  const supplier = p.supplier as
+    | ({ activo: boolean; accountConfigs?: Array<{ account: { id: number; codigo: string; nombre: string } }> } & Record<string, unknown>)
+    | null;
   const employee = p.employee as { activo: boolean } | null;
+  const { accountConfigs, ...supplierData } = supplier ?? {};
   return {
     ...p,
+    supplier: supplier ? supplierData : null,
     esCliente: !!customer?.activo,
     esProveedor: !!supplier?.activo,
     esEmpleado: !!employee?.activo,
+    // Cuenta contable para compras a credito del proveedor, en la empresa activa.
+    cuentaProveedor: accountConfigs?.[0]?.account ?? null,
   };
+}
+
+// Asigna (o quita, con null) la cuenta contable del proveedor en la empresa activa.
+// Debe ser una cuenta de PASIVO imputable y activa del plan de la empresa.
+async function asignarCuentaProveedor(
+  tx: Prisma.TransactionClient,
+  companyId: number | undefined,
+  supplierId: number,
+  accountId: number | null
+) {
+  if (!companyId) throw new HttpError(400, "Empresa no especificada para la cuenta del proveedor");
+  if (accountId === null) {
+    await tx.supplierAccountConfig.deleteMany({ where: { companyId, supplierId } });
+    return;
+  }
+  const cuenta = await tx.chartOfAccount.findFirst({
+    where: { id: accountId, companyId },
+    select: { imputable: true, activo: true, tipo: true },
+  });
+  if (!cuenta) throw new HttpError(400, "Cuenta contable invalida para la empresa");
+  if (!cuenta.imputable) throw new HttpError(400, "La cuenta del proveedor debe ser imputable (admite movimientos)");
+  if (!cuenta.activo) throw new HttpError(400, "La cuenta del proveedor esta inactiva");
+  if (cuenta.tipo !== "PASIVO") throw new HttpError(400, "La cuenta del proveedor debe ser de PASIVO");
+  await tx.supplierAccountConfig.upsert({
+    where: { companyId_supplierId: { companyId, supplierId } },
+    update: { accountId },
+    create: { companyId, supplierId, accountId },
+  });
 }
 
 const personSchema = z.object({
@@ -58,6 +109,8 @@ const personSchema = z.object({
   diasCredito: z.number().int().nonnegative().optional(),
   cargo: z.string().optional().nullable(),
   salario: z.number().nonnegative().optional().nullable(),
+  // Cuenta contable para compras a credito (empresa activa); null = la general PROVEEDORES.
+  cuentaProveedorId: z.number().int().nullable().optional(),
 });
 
 const personsSortable = {
@@ -85,12 +138,12 @@ personsRouter.get(
     });
 
     if (!wantsPagination(req.query)) {
-      const persons = await prisma.person.findMany({ where, include: personInclude, orderBy, take: 300 });
+      const persons = await prisma.person.findMany({ where, include: personInclude(req.companyId), orderBy, take: 300 });
       return res.json(persons.map(serialize));
     }
 
     const [items, total] = await prisma.$transaction([
-      prisma.person.findMany({ where, include: personInclude, orderBy, skip, take }),
+      prisma.person.findMany({ where, include: personInclude(req.companyId), orderBy, skip, take }),
       prisma.person.count({ where }),
     ]);
     res.json(paginated(items.map(serialize), total, page, pageSize));
@@ -102,7 +155,7 @@ personsRouter.get(
   asyncHandler(async (req, res) => {
     const person = await prisma.person.findUnique({
       where: { id: Number(req.params.id) },
-      include: personInclude,
+      include: personInclude(req.companyId),
     });
     if (!person) throw new HttpError(404, "Persona no encontrada");
     res.json(serialize(person));
@@ -114,25 +167,31 @@ personsRouter.post(
   requireAnyPermission(PERSON_PROGRAMS),
   asyncHandler(async (req, res) => {
     const d = personSchema.parse(req.body);
-    const person = await prisma.person.create({
-      data: {
-        tipoDoc: d.tipoDoc,
-        nroDoc: d.nroDoc,
-        ruc: resolverRuc(d.ruc, d.nroDoc),
-        razonSocial: d.razonSocial,
-        nombreFantasia: d.nombreFantasia ?? null,
-        direccion: d.direccion ?? null,
-        latitud: d.latitud ?? null,
-        longitud: d.longitud ?? null,
-        telefono: d.telefono ?? null,
-        email: d.email ?? null,
-        customer: d.esCliente
-          ? { create: { limiteCredito: d.limiteCredito ?? 0, diasCredito: d.diasCredito ?? 0 } }
-          : undefined,
-        supplier: d.esProveedor ? { create: {} } : undefined,
-        employee: d.esEmpleado ? { create: { cargo: d.cargo ?? null, salario: d.salario ?? null } } : undefined,
-      },
-      include: personInclude,
+    const person = await prisma.$transaction(async (tx) => {
+      const p = await tx.person.create({
+        data: {
+          tipoDoc: d.tipoDoc,
+          nroDoc: d.nroDoc,
+          ruc: resolverRuc(d.ruc, d.nroDoc),
+          razonSocial: d.razonSocial,
+          nombreFantasia: d.nombreFantasia ?? null,
+          direccion: d.direccion ?? null,
+          latitud: d.latitud ?? null,
+          longitud: d.longitud ?? null,
+          telefono: d.telefono ?? null,
+          email: d.email ?? null,
+          customer: d.esCliente
+            ? { create: { limiteCredito: d.limiteCredito ?? 0, diasCredito: d.diasCredito ?? 0 } }
+            : undefined,
+          supplier: d.esProveedor ? { create: {} } : undefined,
+          employee: d.esEmpleado ? { create: { cargo: d.cargo ?? null, salario: d.salario ?? null } } : undefined,
+        },
+        include: { supplier: { select: { id: true } } },
+      });
+      if (p.supplier && d.cuentaProveedorId) {
+        await asignarCuentaProveedor(tx, req.companyId, p.supplier.id, d.cuentaProveedorId);
+      }
+      return tx.person.findUniqueOrThrow({ where: { id: p.id }, include: personInclude(req.companyId) });
     });
     res.status(201).json(serialize(person));
   })
@@ -178,11 +237,14 @@ personsRouter.put(
       }
       if (d.esProveedor !== undefined) {
         if (d.esProveedor) {
-          await tx.supplier.upsert({
+          const supplier = await tx.supplier.upsert({
             where: { personId: id },
             create: { personId: id, activo: true },
             update: { activo: true },
           });
+          if (d.cuentaProveedorId !== undefined) {
+            await asignarCuentaProveedor(tx, req.companyId, supplier.id, d.cuentaProveedorId);
+          }
         } else {
           await tx.supplier.updateMany({ where: { personId: id }, data: { activo: false } });
         }
@@ -200,7 +262,7 @@ personsRouter.put(
       }
     });
 
-    const updated = await prisma.person.findUnique({ where: { id }, include: personInclude });
+    const updated = await prisma.person.findUnique({ where: { id }, include: personInclude(req.companyId) });
     res.json(serialize(updated!));
   })
 );

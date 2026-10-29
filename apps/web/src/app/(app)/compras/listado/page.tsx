@@ -17,6 +17,8 @@ function fmtFecha(iso: string) {
   return iso?.slice(0, 10).split("-").reverse().join("/");
 }
 
+const MEDIO_LABEL: Record<string, string> = { EFECTIVO: "Efectivo", TRANSFERENCIA: "Transferencia", CHEQUE: "Cheque" };
+
 const columns: DataColumn<PurchaseInvoice>[] = [
   { key: "fecha", header: "Fecha", render: (p) => <span className="text-slate-600">{fmtFecha(p.fecha)}</span> },
   {
@@ -182,6 +184,42 @@ export default function ListadoComprasPage() {
                 </div>
               </div>
             </div>
+
+            {!!detail.payments?.length && (
+              <div>
+                <h3 className="mb-1.5 text-xs uppercase tracking-wide text-slate-400">Metodo de pago</h3>
+                <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+                  {detail.payments.map((p) => {
+                    const cheque = p.medio === "CHEQUE" ? detail.checks?.find((c) => c.numero === p.referencia) : undefined;
+                    return (
+                      <li key={p.id} className="flex items-center gap-3 px-3 py-2">
+                        <span className="w-28 font-medium text-foreground">{MEDIO_LABEL[p.medio] ?? p.medio}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                          {[p.banco, p.referencia && (p.medio === "CHEQUE" ? `N° ${p.referencia}` : `Op. ${p.referencia}`),
+                            cheque && `cobro ${fmtFecha(cheque.fechaCobro)} · ${cheque.estado.toLowerCase()}`].filter(Boolean).join(" · ")}
+                        </span>
+                        <span className="font-mono">{formatGs(p.monto)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {!!detail.installments?.length && (
+              <div>
+                <h3 className="mb-1.5 text-xs uppercase tracking-wide text-slate-400">Condicion de pago</h3>
+                <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+                  {detail.installments.map((c) => (
+                    <li key={c.id} className="flex items-center gap-3 px-3 py-2">
+                      <span className="w-20 font-mono text-slate-500">{c.nroCuota}/{detail.installments!.length}</span>
+                      <span className="flex-1 text-secondary">Vence {fmtFecha(c.fechaVencimiento)}</span>
+                      <span className="font-mono">{formatGs(c.monto)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {detail.estado === "CONFIRMADO" ? (
               <div className="flex justify-end border-t border-border pt-4">

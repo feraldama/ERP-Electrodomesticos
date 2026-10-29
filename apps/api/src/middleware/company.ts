@@ -21,6 +21,13 @@ export function companyRequired(req: Request, _res: Response, next: NextFunction
     .catch(next);
 }
 
+// Como companyRequired, pero solo si viene el header: para recursos globales (ej.
+// personas) que tienen datos opcionales por empresa.
+export function companyOptional(req: Request, _res: Response, next: NextFunction) {
+  if (!req.header("X-Company-Id")) return next();
+  companyRequired(req, _res, next);
+}
+
 async function resolveCompany(req: Request) {
   const raw = req.header("X-Company-Id");
   const id = Number(raw);

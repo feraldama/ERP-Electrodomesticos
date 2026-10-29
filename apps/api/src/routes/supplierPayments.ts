@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth.js";
 import { companyRequired } from "../middleware/company.js";
 import { requirePermission } from "../middleware/permission.js";
 import { createSupplierPayment } from "../services/payments.js";
-import { assertPeriodoAbierto } from "../services/accounting.js";
+import { assertPeriodoAbierto, cuentaProveedorId } from "../services/accounting.js";
 import { contabilizar } from "../lib/contabilizar.js";
 import { parseFechaDoc } from "../lib/fechas.js";
 
@@ -110,17 +110,24 @@ chequesRouter.get(
     const checks = await prisma.check.findMany({
       where: { companyId: req.companyId, tipo: "EMITIDO", ...(estado ? { estado } : {}) },
       orderBy: [{ estado: "asc" }, { fechaCobro: "asc" }],
-      include: { paymentMade: { select: { supplierId: true } } },
+      include: {
+        paymentMade: { select: { supplierId: true } },
+        purchaseInvoice: { select: { supplierId: true, nroComprobante: true } },
+      },
       take: 500,
     });
-    const supplierIds = [...new Set(checks.map((c) => c.paymentMade?.supplierId).filter((x): x is number => !!x))];
+    const supplierDe = (c: (typeof checks)[number]) => c.paymentMade?.supplierId ?? c.purchaseInvoice?.supplierId;
+    const supplierIds = [...new Set(checks.map(supplierDe).filter((x): x is number => !!x))];
     const suppliers = await prisma.supplier.findMany({
       where: { id: { in: supplierIds } },
       select: { id: true, person: { select: { razonSocial: true } } },
     });
     const nombre = new Map(suppliers.map((s) => [s.id, s.person.razonSocial]));
     res.json(
-      checks.map((c) => ({ ...c, proveedorNombre: c.paymentMade ? nombre.get(c.paymentMade.supplierId) ?? null : null }))
+      checks.map((c) => {
+        const sid = supplierDe(c);
+        return { ...c, proveedorNombre: sid ? nombre.get(sid) ?? null : null };
+      })
     );
   })
 );
@@ -140,20 +147,41 @@ chequesRouter.put(
     if (cheque.estado !== "PENDIENTE") throw new HttpError(400, "Solo se puede cambiar un cheque pendiente");
 
     const repone = estado === "RECHAZADO" || estado === "ANULADO";
+    // El cheque salio de un pago a cuenta o de una compra contado: en ambos casos la
+    // deuda con el proveedor quedo cancelada y hay que reponerla.
     const pm = repone && cheque.paymentMadeId
       ? await prisma.paymentMade.findUnique({ where: { id: cheque.paymentMadeId } })
       : null;
+    const compra = repone && cheque.purchaseInvoiceId
+      ? await prisma.purchaseInvoice.findUnique({ where: { id: cheque.purchaseInvoiceId }, select: { supplierId: true } })
+      : null;
+    const supplierId = pm?.supplierId ?? compra?.supplierId;
+    // Repone la deuda en la cuenta del proveedor: la del pago original o, si el cheque
+    // pago una compra contado, la configurada hoy.
+    let cuentaProv: number | null = null;
+    if (repone && supplierId) {
+      const evPago = pm
+        ? await prisma.accountingEvent.findFirst({
+            where: { companyId: req.companyId, origenTipo: "PAGO", origenId: pm.id },
+            select: { payload: true },
+          })
+        : null;
+      const guardada = (evPago?.payload as Record<string, unknown> | null)?.cuentaProveedorId;
+      cuentaProv = evPago
+        ? typeof guardada === "number" ? guardada : null
+        : await cuentaProveedorId(prisma, req.companyId!, supplierId);
+    }
     // La reversa contable se fecha hoy: el ejercicio de hoy debe estar abierto.
-    if (repone && pm) await assertPeriodoAbierto(prisma, req.companyId!, new Date());
+    if (repone && supplierId) await assertPeriodoAbierto(prisma, req.companyId!, new Date());
 
     await prisma.$transaction(async (tx) => {
       await tx.check.update({ where: { id }, data: { estado } });
-      if (repone && pm) {
+      if (repone && supplierId) {
         const monto = Number(cheque.monto);
         await tx.supplierAccountEntry.create({
           data: {
             companyId: req.companyId!,
-            supplierId: pm.supplierId,
+            supplierId,
             concepto: `Cheque ${estado === "RECHAZADO" ? "rechazado" : "anulado"} ${cheque.numero}`,
             haber: monto, // repone lo que debemos
             origenTipo: "CHEQUE_REVERSA",
@@ -166,7 +194,7 @@ chequesRouter.put(
             tipo: "PAGO_ANULADO",
             origenTipo: "CHEQUE_REVERSA",
             origenId: cheque.id,
-            payload: { montoTotal: monto, numero: cheque.numero },
+            payload: { montoTotal: monto, numero: cheque.numero, cuentaProveedorId: cuentaProv },
           },
         });
       }

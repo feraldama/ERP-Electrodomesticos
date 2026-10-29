@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { applyStockMovement } from "./stock.js";
 import { desglosarIvaIncluido } from "./iva.js";
-import { agruparPorCategoria, assertPeriodoAbierto } from "./accounting.js";
+import { agruparPorCategoria, assertPeriodoAbierto, cuentaProveedorDeCompra } from "./accounting.js";
 import { partesIvaItem, type ParteIva } from "./purchases.js";
 
 export interface PurchaseCreditNoteItemInput {
@@ -189,6 +189,8 @@ export async function createPurchaseCreditNote(prisma: Prisma.TransactionClient,
         invoiceId: invoice.id,
         total,
         conStock: hasItems,
+        // Rebaja la deuda en la misma cuenta del proveedor donde se registro la compra.
+        cuentaProveedorId: await cuentaProveedorDeCompra(prisma, input.companyId, invoice),
         subtotalExenta,
         subtotal5,
         subtotal10,

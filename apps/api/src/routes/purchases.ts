@@ -43,6 +43,20 @@ const purchaseSchema = z.object({
       })
     )
     .min(1, "Agrega al menos un articulo"),
+  // Contado: forma de pago (efectivo / transferencia / cheque), debe sumar el total.
+  pagos: z
+    .array(
+      z.object({
+        medio: z.enum(["EFECTIVO", "TRANSFERENCIA", "CHEQUE"]),
+        monto: z.number().positive(),
+        banco: z.string().optional().nullable(),
+        referencia: z.string().optional().nullable(),
+        fechaCobro: z.string().optional().nullable(),
+      })
+    )
+    .optional(),
+  // Credito: condicion de pago (cronograma de vencimientos), debe sumar el total.
+  cuotas: z.array(z.object({ fechaVencimiento: z.string().min(1), monto: z.number().positive() })).optional(),
 });
 
 // Crear compra (transaccional)
@@ -94,22 +108,31 @@ purchasesRouter.post(
       }
     }
 
-    const invoice = await prisma.$transaction((tx) =>
-      createPurchase(tx, {
-        companyId,
-        supplierId: d.supplierId,
-        branchId: d.branchId ?? null,
-        warehouseId: d.warehouseId,
-        nroComprobante: d.nroComprobante,
-        timbrado: d.timbrado ?? null,
-        fecha,
-        condicion: d.condicion,
-        moneda: d.moneda,
-        observacion: d.observacion ?? null,
-        usuarioId: req.auth?.userId ?? null,
-        items: d.items,
-      })
-    );
+    let invoice;
+    try {
+      invoice = await prisma.$transaction((tx) =>
+        createPurchase(tx, {
+          companyId,
+          supplierId: d.supplierId,
+          branchId: d.branchId ?? null,
+          warehouseId: d.warehouseId,
+          nroComprobante: d.nroComprobante,
+          timbrado: d.timbrado ?? null,
+          fecha,
+          condicion: d.condicion,
+          moneda: d.moneda,
+          observacion: d.observacion ?? null,
+          usuarioId: req.auth?.userId ?? null,
+          items: d.items,
+          pagos: d.pagos?.map((p) => ({ ...p, fechaCobro: p.fechaCobro ? parseFechaDoc(p.fechaCobro) : null })),
+          cuotas: d.cuotas?.map((c) => ({ monto: c.monto, fechaVencimiento: parseFechaDoc(c.fechaVencimiento) })),
+        })
+      );
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      if (err instanceof Error && !("code" in err)) throw new HttpError(400, err.message);
+      throw err;
+    }
 
     await contabilizar(res, companyId, [{ origenTipo: "COMPRA", origenId: invoice.id }]);
     res.status(201).json(invoice);
@@ -195,6 +218,9 @@ purchasesRouter.get(
       include: {
         supplier: { include: { person: true } },
         items: { include: { article: true } },
+        payments: { orderBy: { id: "asc" } },
+        installments: { orderBy: { nroCuota: "asc" } },
+        checks: { select: { id: true, numero: true, estado: true, fechaCobro: true } },
       },
     });
     if (!invoice) throw new HttpError(404, "Compra no encontrada");

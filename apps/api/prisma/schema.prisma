@@ -20,40 +20,40 @@ datasource db {
 // =====================================================================
 
 model Company {
-  id            Int      @id @default(autoincrement())
-  ruc           String   @unique // RUC con digito verificador, ej 80012345-6
-  razonSocial   String
+  id             Int           @id @default(autoincrement())
+  ruc            String        @unique // RUC con digito verificador, ej 80012345-6
+  razonSocial    String
   nombreFantasia String?
-  direccion     String?
-  telefono      String?
-  email         String?
+  direccion      String?
+  telefono       String?
+  email          String?
   // Datos SIFEN / facturacion electronica
-  sifenAmbiente SifenAmbiente @default(TEST) // TEST | PROD
-  timbradoNro   String?
+  sifenAmbiente  SifenAmbiente @default(TEST) // TEST | PROD
+  timbradoNro    String?
   timbradoInicio DateTime?
-  activo        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  activo         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  branches      Branch[]
-  userCompanies UserCompany[]
-  warehouses    Warehouse[]
-  timbrados     Timbrado[]
+  branches         Branch[]
+  userCompanies    UserCompany[]
+  warehouses       Warehouse[]
+  timbrados        Timbrado[]
   puntosExpedicion PuntoExpedicion[]
 
   @@map("companies")
 }
 
 model Branch {
-  id          Int     @id @default(autoincrement())
-  companyId   Int
-  codigo      String  // establecimiento SIFEN, ej "001"
-  nombre      String
-  direccion   String?
-  activo      Boolean @default(true)
+  id        Int     @id @default(autoincrement())
+  companyId Int
+  codigo    String // establecimiento SIFEN, ej "001"
+  nombre    String
+  direccion String?
+  activo    Boolean @default(true)
 
-  company     Company @relation(fields: [companyId], references: [id])
-  purchases   PurchaseInvoice[]
+  company   Company           @relation(fields: [companyId], references: [id])
+  purchases PurchaseInvoice[]
 
   @@unique([companyId, codigo])
   @@map("branches")
@@ -81,16 +81,16 @@ model UserCompany {
   userId    Int
   companyId Int
 
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@id([userId, companyId])
   @@map("user_companies")
 }
 
 model Role {
-  id          Int    @id @default(autoincrement())
-  nombre      String @unique
+  id          Int     @id @default(autoincrement())
+  nombre      String  @unique
   descripcion String?
 
   users       UserRole[]
@@ -103,8 +103,8 @@ model UserRole {
   userId Int
   roleId Int
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
   @@map("user_roles")
@@ -112,11 +112,11 @@ model UserRole {
 
 // Un permiso = poder usar un Programa (o una accion de el)
 model Permission {
-  id          Int    @id @default(autoincrement())
-  clave       String @unique // ej "STK.articulos.editar"
+  id          Int     @id @default(autoincrement())
+  clave       String  @unique // ej "STK.articulos.editar"
   descripcion String?
 
-  roles       RolePermission[]
+  roles RolePermission[]
 
   @@map("permissions")
 }
@@ -125,8 +125,8 @@ model RolePermission {
   roleId       Int
   permissionId Int
 
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
   @@map("role_permissions")
@@ -134,32 +134,32 @@ model RolePermission {
 
 // Catalogo de modulos (tarjetas grandes) - imagen 1
 model Module {
-  id        Int      @id @default(autoincrement())
-  codigo    String   @unique // STK, COM, VEN, FIN, CON
-  nombre    String
-  icono     String?
-  color     String?
-  orden     Int      @default(0)
-  activo    Boolean  @default(true)
+  id     Int     @id @default(autoincrement())
+  codigo String  @unique // STK, COM, VEN, FIN, CON
+  nombre String
+  icono  String?
+  color  String?
+  orden  Int     @default(0)
+  activo Boolean @default(true)
 
-  programs  Program[]
+  programs Program[]
 
   @@map("modules")
 }
 
 // Catalogo de programas dentro de un modulo (tarjetas) - imagen 2
 model Program {
-  id         Int        @id @default(autoincrement())
-  moduleId   Int
-  codigo     String     @unique // ej STKM009
-  nombre     String
-  categoria  ProgramCategoria @default(MANTENIMIENTOS)
-  ruta       String?    // ruta en el frontend, ej /stock/articulos
-  icono      String?
-  orden      Int        @default(0)
-  activo     Boolean    @default(true)
+  id        Int              @id @default(autoincrement())
+  moduleId  Int
+  codigo    String           @unique // ej STKM009
+  nombre    String
+  categoria ProgramCategoria @default(MANTENIMIENTOS)
+  ruta      String? // ruta en el frontend, ej /stock/articulos
+  icono     String?
+  orden     Int              @default(0)
+  activo    Boolean          @default(true)
 
-  module     Module     @relation(fields: [moduleId], references: [id])
+  module Module @relation(fields: [moduleId], references: [id])
 
   @@map("programs")
 }
@@ -182,45 +182,45 @@ enum SifenAmbiente {
 // =====================================================================
 
 model Person {
-  id           Int      @id @default(autoincrement())
-  tipoDoc      TipoDocumento @default(CI)
-  nroDoc       String   // CI o RUC
-  ruc          String?  // RUC completo con DV si aplica
-  razonSocial  String   // nombre o razon social
+  id             Int           @id @default(autoincrement())
+  tipoDoc        TipoDocumento @default(CI)
+  nroDoc         String // CI o RUC
+  ruc            String? // RUC completo con DV si aplica
+  razonSocial    String // nombre o razon social
   nombreFantasia String?
-  direccion    String?
-  latitud      Float?   // ubicacion en el mapa (OpenStreetMap)
-  longitud     Float?
-  telefono     String?
-  email        String?
-  fechaNac     DateTime?
-  activo       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  direccion      String?
+  latitud        Float? // ubicacion en el mapa (OpenStreetMap)
+  longitud       Float?
+  telefono       String?
+  email          String?
+  fechaNac       DateTime?
+  activo         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  customer     Customer?
-  supplier     Supplier?
-  employee     Employee?
+  customer Customer?
+  supplier Supplier?
+  employee Employee?
 
   @@unique([tipoDoc, nroDoc])
   @@map("persons")
 }
 
 enum TipoDocumento {
-  CI       // Cedula
+  CI // Cedula
   RUC
   PASAPORTE
   OTRO
 }
 
 model Customer {
-  id            Int      @id @default(autoincrement())
-  personId      Int      @unique
-  limiteCredito Decimal  @default(0) @db.Decimal(18, 4)
-  diasCredito   Int      @default(0)
-  activo        Boolean  @default(true)
+  id            Int     @id @default(autoincrement())
+  personId      Int     @unique
+  limiteCredito Decimal @default(0) @db.Decimal(18, 4)
+  diasCredito   Int     @default(0)
+  activo        Boolean @default(true)
 
-  person        Person   @relation(fields: [personId], references: [id])
+  person        Person                 @relation(fields: [personId], references: [id])
   salesInvoices SalesInvoice[]
   account       CustomerAccountEntry[]
   quotes        SalesQuote[]
@@ -229,36 +229,53 @@ model Customer {
 }
 
 model Supplier {
-  id              Int      @id @default(autoincrement())
-  personId        Int      @unique
-  activo          Boolean  @default(true)
+  id       Int     @id @default(autoincrement())
+  personId Int     @unique
+  activo   Boolean @default(true)
 
-  person          Person   @relation(fields: [personId], references: [id])
+  person           Person                  @relation(fields: [personId], references: [id])
   purchaseInvoices PurchaseInvoice[]
-  account         SupplierAccountEntry[]
-  timbrados       SupplierTimbrado[]
+  account          SupplierAccountEntry[]
+  timbrados        SupplierTimbrado[]
+  accountConfigs   SupplierAccountConfig[]
 
   @@map("suppliers")
+}
+
+// Cuenta contable del proveedor por empresa (las personas son globales, el plan de
+// cuentas es por empresa). Si esta asignada, la deuda por compras a credito y sus
+// pagos se imputan a esta cuenta en vez de la clave global PROVEEDORES.
+model SupplierAccountConfig {
+  id         Int @id @default(autoincrement())
+  companyId  Int
+  supplierId Int
+  accountId  Int
+
+  supplier Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  account  ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([companyId, supplierId])
+  @@map("supplier_account_config")
 }
 
 // Timbrados de los proveedores: se registran una vez y se eligen al cargar compras.
 // Los vencidos dejan de ofrecerse.
 model SupplierTimbrado {
-  id               Int      @id @default(autoincrement())
+  id               Int                @id @default(autoincrement())
   supplierId       Int
-  numero           String   // nro de timbrado, ej "16087162"
+  numero           String // nro de timbrado, ej "16087162"
   tipoDocumento    TipoDocElectronico @default(FACTURA)
-  establecimiento  String   // ej "016"
-  puntoExpedicion  String   // ej "003"
+  establecimiento  String // ej "016"
+  puntoExpedicion  String // ej "003"
   fechaInicio      DateTime
   fechaVencimiento DateTime
   numeroInicial    Int?
   numeroFinal      Int?
   tipo             TipoTimbrado?
-  activo           Boolean  @default(true)
-  createdAt        DateTime @default(now())
+  activo           Boolean            @default(true)
+  createdAt        DateTime           @default(now())
 
-  supplier         Supplier @relation(fields: [supplierId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
 
   @@unique([supplierId, numero, tipoDocumento, establecimiento, puntoExpedicion], map: "supplier_timbrados_numero_key")
   @@index([supplierId, fechaVencimiento])
@@ -272,14 +289,14 @@ enum TipoTimbrado {
 }
 
 model Employee {
-  id          Int      @id @default(autoincrement())
-  personId    Int      @unique
-  cargo       String?
+  id           Int       @id @default(autoincrement())
+  personId     Int       @unique
+  cargo        String?
   fechaIngreso DateTime?
-  salario     Decimal? @db.Decimal(18, 4)
-  activo      Boolean  @default(true)
+  salario      Decimal?  @db.Decimal(18, 4)
+  activo       Boolean   @default(true)
 
-  person      Person   @relation(fields: [personId], references: [id])
+  person Person @relation(fields: [personId], references: [id])
 
   @@map("employees")
 }
@@ -298,12 +315,12 @@ model Brand {
 }
 
 model Category {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @unique
-  parentId Int?
-  parent   Category? @relation("CategoryTree", fields: [parentId], references: [id])
-  children Category[] @relation("CategoryTree")
-  articles Article[]
+  id             Int                     @id @default(autoincrement())
+  nombre         String                  @unique
+  parentId       Int?
+  parent         Category?               @relation("CategoryTree", fields: [parentId], references: [id])
+  children       Category[]              @relation("CategoryTree")
+  articles       Article[]
   accountConfigs CategoryAccountConfig[]
 
   @@map("categories")
@@ -334,9 +351,9 @@ model CategoryAccountConfig {
 // Rubro de facturacion: agrupa articulos para emitir cada grupo con su
 // agrupa articulos por punto de expedicion al facturar.
 model Rubro {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @unique
-  activo   Boolean   @default(true)
+  id       Int               @id @default(autoincrement())
+  nombre   String            @unique
+  activo   Boolean           @default(true)
   articles Article[]
   puntos   PuntoExpedicion[]
 
@@ -348,18 +365,18 @@ model Rubro {
 // punto de expedicion (ver PuntoExpedicion). Se permite mas de uno por empresa
 // para soportar renovaciones, pero normalmente hay uno activo.
 model Timbrado {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   companyId       Int
-  numero          String   // nro de timbrado, ej "12345678"
-  establecimiento String   @default("001") // codigo de establecimiento SIFEN
-  fechaInicio     DateTime               // inicio de vigencia
-  fechaFin        DateTime?              // fin de vigencia
-  activo          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  numero          String // nro de timbrado, ej "12345678"
+  establecimiento String    @default("001") // codigo de establecimiento SIFEN
+  fechaInicio     DateTime // inicio de vigencia
+  fechaFin        DateTime? // fin de vigencia
+  activo          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  company         Company  @relation(fields: [companyId], references: [id])
-  puntos          PuntoExpedicion[]
+  company Company           @relation(fields: [companyId], references: [id])
+  puntos  PuntoExpedicion[]
 
   @@unique([companyId, numero])
   @@index([companyId])
@@ -370,76 +387,76 @@ model Timbrado {
 // su propio punto, con numeracion independiente. El numero de factura se arma
 // como establecimiento-codigo-numero (ej. 001-002-0000123).
 model PuntoExpedicion {
-  id            Int      @id @default(autoincrement())
+  id            Int                @id @default(autoincrement())
   companyId     Int
   timbradoId    Int
   rubroId       Int
-  codigo        String   // punto de expedicion, ej "001", "002"
+  codigo        String // punto de expedicion, ej "001", "002"
   tipoDocumento TipoDocElectronico @default(FACTURA)
-  numeroInicial Int      @default(1)   // primer numero autorizado
-  numeroFinal   Int?                   // ultimo numero autorizado (rango)
-  numeroActual  Int      @default(0)   // ultimo numero emitido
-  activo        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  numeroInicial Int                @default(1) // primer numero autorizado
+  numeroFinal   Int? // ultimo numero autorizado (rango)
+  numeroActual  Int                @default(0) // ultimo numero emitido
+  activo        Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  timbrado      Timbrado @relation(fields: [timbradoId], references: [id], onDelete: Cascade)
-  rubro         Rubro    @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  timbrado Timbrado @relation(fields: [timbradoId], references: [id], onDelete: Cascade)
+  rubro    Rubro    @relation(fields: [rubroId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, rubroId]) // un punto por rubro y empresa
-  @@unique([companyId, codigo])  // codigo de punto unico por empresa
+  @@unique([companyId, codigo]) // codigo de punto unico por empresa
   @@index([companyId])
   @@map("puntos_expedicion")
 }
 
 model UnitOfMeasure {
-  id        Int       @id @default(autoincrement())
-  codigo    String    @unique // UN, KG, MT, etc
-  nombre    String
-  articles  Article[]
+  id       Int       @id @default(autoincrement())
+  codigo   String    @unique // UN, KG, MT, etc
+  nombre   String
+  articles Article[]
 
   @@map("units_of_measure")
 }
 
 model Article {
-  id            Int      @id @default(autoincrement())
-  codigo        String   @unique // codigo interno
+  id            Int         @id @default(autoincrement())
+  codigo        String      @unique // codigo interno
   descripcion   String
   brandId       Int?
   categoryId    Int?
   unitId        Int?
   rubroId       Int?
   tipo          ArticleTipo @default(PRODUCTO)
-  ivaTipo       IvaTipo  @default(IVA10)
+  ivaTipo       IvaTipo     @default(IVA10)
   // controla numeros de serie / IMEI por unidad
-  controlaSerie Boolean  @default(false)
+  controlaSerie Boolean     @default(false)
   // meses de garantia del articulo (0 = sin garantia). Se usa para el certificado de garantia al vender.
-  garantiaMeses Int      @default(0)
-  costoActual   Decimal  @default(0) @db.Decimal(18, 4)
-  precioVenta   Decimal  @default(0) @db.Decimal(18, 4)
-  stockMinimo   Decimal  @default(0) @db.Decimal(18, 4)
-  imagenUrl     String?  // ruta relativa de la imagen, ej /uploads/articles/xxx.jpg
-  activo        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  garantiaMeses Int         @default(0)
+  costoActual   Decimal     @default(0) @db.Decimal(18, 4)
+  precioVenta   Decimal     @default(0) @db.Decimal(18, 4)
+  stockMinimo   Decimal     @default(0) @db.Decimal(18, 4)
+  imagenUrl     String? // ruta relativa de la imagen, ej /uploads/articles/xxx.jpg
+  activo        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  brand         Brand?    @relation(fields: [brandId], references: [id])
-  category      Category? @relation(fields: [categoryId], references: [id])
-  unit          UnitOfMeasure? @relation(fields: [unitId], references: [id])
-  rubro         Rubro?    @relation(fields: [rubroId], references: [id])
+  brand    Brand?         @relation(fields: [brandId], references: [id])
+  category Category?      @relation(fields: [categoryId], references: [id])
+  unit     UnitOfMeasure? @relation(fields: [unitId], references: [id])
+  rubro    Rubro?         @relation(fields: [rubroId], references: [id])
 
-  barcodes      ArticleBarcode[]
-  stocks        StockByWarehouse[]
-  movements     StockMovement[]
-  costHistory   ArticleCostHistory[]
-  serials       ArticleSerial[]
-  purchaseItems PurchaseInvoiceItem[]
-  salesItems    SalesInvoiceItem[]
-  creditNoteItems SalesCreditNoteItem[]
+  barcodes                ArticleBarcode[]
+  stocks                  StockByWarehouse[]
+  movements               StockMovement[]
+  costHistory             ArticleCostHistory[]
+  serials                 ArticleSerial[]
+  purchaseItems           PurchaseInvoiceItem[]
+  salesItems              SalesInvoiceItem[]
+  creditNoteItems         SalesCreditNoteItem[]
   purchaseCreditNoteItems PurchaseCreditNoteItem[]
-  quoteItems    SalesQuoteItem[]
-  prices        ArticlePrice[]
+  quoteItems              SalesQuoteItem[]
+  prices                  ArticlePrice[]
 
   @@map("articles")
 }
@@ -450,18 +467,18 @@ enum ArticleTipo {
 }
 
 enum IvaTipo {
-  IVA10   // 10%
-  IVA5    // 5%
-  EXENTA  // 0% / exenta
+  IVA10 // 10%
+  IVA5 // 5%
+  EXENTA // 0% / exenta
 }
 
 model ArticleBarcode {
-  id        Int     @id @default(autoincrement())
-  articleId Int
-  codigo    String  @unique
+  id          Int     @id @default(autoincrement())
+  articleId   Int
+  codigo      String  @unique
   esPrincipal Boolean @default(false)
 
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@map("article_barcodes")
 }
@@ -473,9 +490,9 @@ model Warehouse {
   nombre    String
   activo    Boolean @default(true)
 
-  company   Company @relation(fields: [companyId], references: [id])
-  stocks    StockByWarehouse[]
-  serials   ArticleSerial[]
+  company Company            @relation(fields: [companyId], references: [id])
+  stocks  StockByWarehouse[]
+  serials ArticleSerial[]
 
   @@unique([companyId, codigo])
   @@map("warehouses")
@@ -487,34 +504,34 @@ model StockByWarehouse {
   warehouseId Int
   cantidad    Decimal @default(0) @db.Decimal(18, 4)
 
-  article     Article   @relation(fields: [articleId], references: [id])
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  article   Article   @relation(fields: [articleId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@unique([articleId, warehouseId])
   @@map("stock_by_warehouse")
 }
 
 model StockMovement {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  articleId     Int
-  warehouseId   Int      // deposito afectado
-  warehouseDestId Int?   // destino en transferencias
-  tipo          StockMovTipo
-  cantidad      Decimal  @db.Decimal(18, 4) // positivo ingreso, negativo egreso
-  costoUnitario Decimal? @db.Decimal(18, 4)
+  id              Int          @id @default(autoincrement())
+  companyId       Int
+  articleId       Int
+  warehouseId     Int // deposito afectado
+  warehouseDestId Int? // destino en transferencias
+  tipo            StockMovTipo
+  cantidad        Decimal      @db.Decimal(18, 4) // positivo ingreso, negativo egreso
+  costoUnitario   Decimal?     @db.Decimal(18, 4)
   // referencia al documento de origen
-  origenTipo    String?  // COMPRA, VENTA, AJUSTE, TRANSFERENCIA, DEVOLUCION
-  origenId      Int?
+  origenTipo      String? // COMPRA, VENTA, AJUSTE, TRANSFERENCIA, DEVOLUCION
+  origenId        Int?
   // Identifica todas las lineas creadas en una misma operacion (una transferencia,
   // un ajuste, una compra, una venta, una nota de credito). Permite agrupar el kardex
   // por "movimiento" sin depender de la fecha (Prisma genera now() por fila).
-  loteId        String?  @db.Uuid
-  observacion   String?
-  fecha         DateTime @default(now())
-  usuarioId     Int?
+  loteId          String?      @db.Uuid
+  observacion     String?
+  fecha           DateTime     @default(now())
+  usuarioId       Int?
 
-  article       Article  @relation(fields: [articleId], references: [id])
+  article Article @relation(fields: [articleId], references: [id])
 
   @@index([companyId, articleId])
   @@index([companyId, loteId])
@@ -529,15 +546,15 @@ enum StockMovTipo {
 }
 
 model ArticleCostHistory {
-  id          Int      @id @default(autoincrement())
-  articleId   Int
-  costo       Decimal  @db.Decimal(18, 4)
-  moneda      String   @default("PYG")
-  origenTipo  String?  // COMPRA
-  origenId    Int?
-  fecha       DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  articleId  Int
+  costo      Decimal  @db.Decimal(18, 4)
+  moneda     String   @default("PYG")
+  origenTipo String? // COMPRA
+  origenId   Int?
+  fecha      DateTime @default(now())
 
-  article     Article  @relation(fields: [articleId], references: [id])
+  article Article @relation(fields: [articleId], references: [id])
 
   @@index([articleId, fecha])
   @@map("article_cost_history")
@@ -545,19 +562,19 @@ model ArticleCostHistory {
 
 // Numero de serie / IMEI por unidad (electronicos)
 model ArticleSerial {
-  id          Int      @id @default(autoincrement())
-  articleId   Int
-  serie       String
-  warehouseId Int?
-  estado      SerialEstado @default(EN_STOCK)
+  id                Int          @id @default(autoincrement())
+  articleId         Int
+  serie             String
+  warehouseId       Int?
+  estado            SerialEstado @default(EN_STOCK)
   // Trazabilidad (garantia): de que compra entro, a que venta salio y cuando.
   purchaseInvoiceId Int?
   saleInvoiceId     Int?
   soldAt            DateTime?
-  createdAt   DateTime @default(now())
+  createdAt         DateTime     @default(now())
 
-  article     Article   @relation(fields: [articleId], references: [id])
-  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+  article   Article    @relation(fields: [articleId], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
 
   @@unique([articleId, serie])
   @@index([articleId, estado])
@@ -576,121 +593,158 @@ enum SerialEstado {
 // =====================================================================
 
 model PurchaseInvoice {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  supplierId    Int
-  branchId      Int?     // sucursal que registra la compra
-  warehouseId   Int?     // deposito que recibe la mercaderia
+  id                   Int           @id @default(autoincrement())
+  companyId            Int
+  supplierId           Int
+  branchId             Int? // sucursal que registra la compra
+  warehouseId          Int? // deposito que recibe la mercaderia
   // datos del comprobante del proveedor
-  timbrado      String?
-  nroComprobante String  // ej 001-001-0000123
-  fecha         DateTime
-  condicion     CondicionPago @default(CONTADO)
-  moneda        String   @default("PYG")
-  tipoCambio    Decimal  @default(1) @db.Decimal(18, 6)
-  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
-  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
-  iva5          Decimal  @default(0) @db.Decimal(18, 4)
-  iva10         Decimal  @default(0) @db.Decimal(18, 4)
-  total         Decimal  @default(0) @db.Decimal(18, 4)
-  estado        DocEstado @default(CONFIRMADO)
-  observacion   String?
-  createdAt     DateTime @default(now())
-  usuarioId     Int?
+  timbrado             String?
+  nroComprobante       String // ej 001-001-0000123
+  fecha                DateTime
+  condicion            CondicionPago @default(CONTADO)
+  moneda               String        @default("PYG")
+  tipoCambio           Decimal       @default(1) @db.Decimal(18, 6)
+  subtotalExenta       Decimal       @default(0) @db.Decimal(18, 4)
+  subtotal5            Decimal       @default(0) @db.Decimal(18, 4)
+  subtotal10           Decimal       @default(0) @db.Decimal(18, 4)
+  iva5                 Decimal       @default(0) @db.Decimal(18, 4)
+  iva10                Decimal       @default(0) @db.Decimal(18, 4)
+  total                Decimal       @default(0) @db.Decimal(18, 4)
+  estado               DocEstado     @default(CONFIRMADO)
+  observacion          String?
+  createdAt            DateTime      @default(now())
+  usuarioId            Int?
   // anulacion
   anuladoAt            DateTime?
   anuladoPorId         Int?
   motivoAnulacionId    Int?
   observacionAnulacion String?
-  anuladoEnLibroIva    Boolean  @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
+  anuladoEnLibroIva    Boolean       @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
 
-  supplier      Supplier @relation(fields: [supplierId], references: [id])
-  branch        Branch?  @relation(fields: [branchId], references: [id])
-  motivoAnulacion MotivoAnulacion? @relation(fields: [motivoAnulacionId], references: [id])
-  items         PurchaseInvoiceItem[]
-  creditNotes   PurchaseCreditNote[]
-  returns       PurchaseReturn[]
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  branch          Branch?               @relation(fields: [branchId], references: [id])
+  motivoAnulacion MotivoAnulacion?      @relation(fields: [motivoAnulacionId], references: [id])
+  items           PurchaseInvoiceItem[]
+  creditNotes     PurchaseCreditNote[]
+  returns         PurchaseReturn[]
+  payments        PurchasePayment[]
+  installments    PurchaseInstallment[]
+  checks          Check[]
 
   @@index([companyId, supplierId])
   @@map("purchase_invoices")
 }
 
 model PurchaseInvoiceItem {
-  id          Int      @id @default(autoincrement())
-  invoiceId   Int
-  articleId   Int
-  cantidad    Decimal  @db.Decimal(18, 4) // unidades que ingresan (compradas + bonificadas)
+  id                 Int     @id @default(autoincrement())
+  invoiceId          Int
+  articleId          Int
+  cantidad           Decimal @db.Decimal(18, 4) // unidades que ingresan (compradas + bonificadas)
   cantidadBonificada Decimal @default(0) @db.Decimal(18, 4) // sin cargo, incluidas en cantidad
-  costoUnitario Decimal @db.Decimal(18, 4) // costo efectivo con IVA: total / cantidad
-  descuento   Decimal  @default(0) @db.Decimal(18, 4) // descuento de la linea (Gs, con IVA)
-  ivaTipo     IvaTipo  @default(IVA10) // tasa predominante (la de mayor importe)
-  total       Decimal  @db.Decimal(18, 4)
+  costoUnitario      Decimal @db.Decimal(18, 4) // costo efectivo con IVA: total / cantidad
+  descuento          Decimal @default(0) @db.Decimal(18, 4) // descuento de la linea (Gs, con IVA)
+  ivaTipo            IvaTipo @default(IVA10) // tasa predominante (la de mayor importe)
+  total              Decimal @db.Decimal(18, 4)
   // Importe de la linea (con IVA) por tasa: un articulo puede tener una parte gravada
   // y otra exenta. Suman `total`.
-  importe10     Decimal @default(0) @db.Decimal(18, 4)
-  importe5      Decimal @default(0) @db.Decimal(18, 4)
-  importeExenta Decimal @default(0) @db.Decimal(18, 4)
+  importe10          Decimal @default(0) @db.Decimal(18, 4)
+  importe5           Decimal @default(0) @db.Decimal(18, 4)
+  importeExenta      Decimal @default(0) @db.Decimal(18, 4)
 
-  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  article     Article  @relation(fields: [articleId], references: [id])
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  article Article         @relation(fields: [articleId], references: [id])
 
   @@map("purchase_invoice_items")
+}
+
+// Pago de una compra CONTADO, por medio (puede repartirse entre varios). Un pago con
+// cheque genera ademas el Check EMITIDO ligado a la compra.
+model PurchasePayment {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  invoiceId  Int
+  medio      String // EFECTIVO | TRANSFERENCIA | CHEQUE
+  monto      Decimal  @db.Decimal(18, 4)
+  banco      String?
+  referencia String? // nro de transferencia o de cheque
+  createdAt  DateTime @default(now())
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, invoiceId])
+  @@map("purchase_payments")
+}
+
+// Condicion de pago de una compra CREDITO: cronograma de vencimientos acordado con el
+// proveedor. Informativo: los pagos se imputan a cuenta del saldo del proveedor.
+model PurchaseInstallment {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  invoiceId        Int
+  nroCuota         Int
+  fechaVencimiento DateTime
+  monto            Decimal  @db.Decimal(18, 4)
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, fechaVencimiento])
+  @@map("purchase_installments")
 }
 
 // Nota de credito de compra (recibida del proveedor). Puede devolver articulos
 // (egreso de stock, con detalle) o ser solo por monto (descuento/error).
 model PurchaseCreditNote {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  supplierId    Int
-  invoiceId     Int?
-  warehouseId   Int?     // deposito desde donde sale el stock devuelto
-  nroComprobante String  // nro de la NC del proveedor (documento recibido)
-  fecha         DateTime
-  motivo        String?
-  conStock      Boolean  @default(false)
-  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
-  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
-  iva5          Decimal  @default(0) @db.Decimal(18, 4)
-  iva10         Decimal  @default(0) @db.Decimal(18, 4)
-  total         Decimal  @db.Decimal(18, 4)
-  usuarioId     Int?
-  createdAt     DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  supplierId     Int
+  invoiceId      Int?
+  warehouseId    Int? // deposito desde donde sale el stock devuelto
+  nroComprobante String // nro de la NC del proveedor (documento recibido)
+  fecha          DateTime
+  motivo         String?
+  conStock       Boolean  @default(false)
+  subtotalExenta Decimal  @default(0) @db.Decimal(18, 4)
+  subtotal5      Decimal  @default(0) @db.Decimal(18, 4)
+  subtotal10     Decimal  @default(0) @db.Decimal(18, 4)
+  iva5           Decimal  @default(0) @db.Decimal(18, 4)
+  iva10          Decimal  @default(0) @db.Decimal(18, 4)
+  total          Decimal  @db.Decimal(18, 4)
+  usuarioId      Int?
+  createdAt      DateTime @default(now())
 
-  invoice       PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
-  items         PurchaseCreditNoteItem[]
+  invoice PurchaseInvoice?         @relation(fields: [invoiceId], references: [id])
+  items   PurchaseCreditNoteItem[]
 
   @@index([companyId, invoiceId])
   @@map("purchase_credit_notes")
 }
 
 model PurchaseCreditNoteItem {
-  id           Int      @id @default(autoincrement())
-  creditNoteId Int
-  articleId    Int
-  cantidad     Decimal  @db.Decimal(18, 4)
+  id            Int     @id @default(autoincrement())
+  creditNoteId  Int
+  articleId     Int
+  cantidad      Decimal @db.Decimal(18, 4)
   costoUnitario Decimal @db.Decimal(18, 4)
-  ivaTipo      IvaTipo  @default(IVA10)
-  total        Decimal  @db.Decimal(18, 4)
+  ivaTipo       IvaTipo @default(IVA10)
+  total         Decimal @db.Decimal(18, 4)
 
-  creditNote   PurchaseCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
-  article      Article  @relation(fields: [articleId], references: [id])
+  creditNote PurchaseCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  article    Article            @relation(fields: [articleId], references: [id])
 
   @@map("purchase_credit_note_items")
 }
 
 model PurchaseReturn {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  invoiceId     Int?
-  fecha         DateTime
-  motivo        String?
-  total         Decimal  @db.Decimal(18, 4)
-  createdAt     DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  invoiceId Int?
+  fecha     DateTime
+  motivo    String?
+  total     Decimal  @db.Decimal(18, 4)
+  createdAt DateTime @default(now())
 
-  invoice       PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
+  invoice PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
 
   @@map("purchase_returns")
 }
@@ -738,9 +792,9 @@ model PriceList {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  prices    ArticlePrice[]
-  invoices  SalesInvoice[]
-  quotes    SalesQuote[]
+  prices   ArticlePrice[]
+  invoices SalesInvoice[]
+  quotes   SalesQuote[]
 
   @@map("price_lists")
 }
@@ -754,8 +808,8 @@ model ArticlePrice {
   precio      Decimal  @default(0) @db.Decimal(18, 4) // IVA incluido
   updatedAt   DateTime @updatedAt
 
-  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  article   Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
 
   @@unique([articleId, priceListId])
   @@index([priceListId])
@@ -763,45 +817,45 @@ model ArticlePrice {
 }
 
 model SalesInvoice {
-  id              Int      @id @default(autoincrement())
-  companyId       Int
-  branchId        Int?
-  customerId      Int
-  priceListId     Int?     // lista de precios usada al vender
+  id                   Int                @id @default(autoincrement())
+  companyId            Int
+  branchId             Int?
+  customerId           Int
+  priceListId          Int? // lista de precios usada al vender
   // numeracion SIFEN: establecimiento-puntoExpedicion-numero
-  establecimiento String   @default("001")
-  puntoExpedicion String   @default("001")
-  numero          String   // 0000001
-  timbrado        String?
-  tipoDocumento   TipoDocElectronico @default(FACTURA)
+  establecimiento      String             @default("001")
+  puntoExpedicion      String             @default("001")
+  numero               String // 0000001
+  timbrado             String?
+  tipoDocumento        TipoDocElectronico @default(FACTURA)
   // CDC: codigo de control 44 digitos (facturacion electronica)
-  cdc             String?  @unique
-  estadoSifen     SifenEstado @default(PENDIENTE)
-  fecha           DateTime
-  condicion       CondicionPago @default(CONTADO)
-  moneda          String   @default("PYG")
-  tipoCambio      Decimal  @default(1) @db.Decimal(18, 6)
-  subtotalExenta  Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal5       Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal10      Decimal  @default(0) @db.Decimal(18, 4)
-  iva5            Decimal  @default(0) @db.Decimal(18, 4)
-  iva10           Decimal  @default(0) @db.Decimal(18, 4)
-  total           Decimal  @default(0) @db.Decimal(18, 4)
-  entregaInicial  Decimal  @default(0) @db.Decimal(18, 4) // monto pagado al momento (contado=total, credito=anticipo)
-  estado          DocEstado @default(CONFIRMADO)
-  observacion     String?
-  createdAt       DateTime @default(now())
-  usuarioId       Int?
+  cdc                  String?            @unique
+  estadoSifen          SifenEstado        @default(PENDIENTE)
+  fecha                DateTime
+  condicion            CondicionPago      @default(CONTADO)
+  moneda               String             @default("PYG")
+  tipoCambio           Decimal            @default(1) @db.Decimal(18, 6)
+  subtotalExenta       Decimal            @default(0) @db.Decimal(18, 4)
+  subtotal5            Decimal            @default(0) @db.Decimal(18, 4)
+  subtotal10           Decimal            @default(0) @db.Decimal(18, 4)
+  iva5                 Decimal            @default(0) @db.Decimal(18, 4)
+  iva10                Decimal            @default(0) @db.Decimal(18, 4)
+  total                Decimal            @default(0) @db.Decimal(18, 4)
+  entregaInicial       Decimal            @default(0) @db.Decimal(18, 4) // monto pagado al momento (contado=total, credito=anticipo)
+  estado               DocEstado          @default(CONFIRMADO)
+  observacion          String?
+  createdAt            DateTime           @default(now())
+  usuarioId            Int?
   // anulacion
   anuladoAt            DateTime?
   anuladoPorId         Int?
   motivoAnulacionId    Int?
   observacionAnulacion String?
-  anuladoEnLibroIva    Boolean  @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
+  anuladoEnLibroIva    Boolean            @default(false) // la factura anulada figura en el Libro IVA (montos en 0)
 
-  customer        Customer @relation(fields: [customerId], references: [id])
-  motivoAnulacion MotivoAnulacion? @relation(fields: [motivoAnulacionId], references: [id])
-  priceList       PriceList? @relation(fields: [priceListId], references: [id])
+  customer        Customer           @relation(fields: [customerId], references: [id])
+  motivoAnulacion MotivoAnulacion?   @relation(fields: [motivoAnulacionId], references: [id])
+  priceList       PriceList?         @relation(fields: [priceListId], references: [id])
   items           SalesInvoiceItem[]
   payments        SalesPayment[]
   creditNotes     SalesCreditNote[]
@@ -815,17 +869,17 @@ model SalesInvoice {
 }
 
 model SalesInvoiceItem {
-  id          Int      @id @default(autoincrement())
-  invoiceId   Int
-  articleId   Int
-  cantidad    Decimal  @db.Decimal(18, 4)
+  id             Int     @id @default(autoincrement())
+  invoiceId      Int
+  articleId      Int
+  cantidad       Decimal @db.Decimal(18, 4)
   precioUnitario Decimal @db.Decimal(18, 4)
-  descuento   Decimal  @default(0) @db.Decimal(18, 4)
-  ivaTipo     IvaTipo  @default(IVA10)
-  total       Decimal  @db.Decimal(18, 4)
+  descuento      Decimal @default(0) @db.Decimal(18, 4)
+  ivaTipo        IvaTipo @default(IVA10)
+  total          Decimal @db.Decimal(18, 4)
 
-  invoice     SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  article     Article  @relation(fields: [articleId], references: [id])
+  invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  article Article      @relation(fields: [articleId], references: [id])
 
   @@map("sales_invoice_items")
 }
@@ -833,14 +887,14 @@ model SalesInvoiceItem {
 // Desglose de las formas de pago de una venta (lo cobrado al momento: en contado
 // es el total; en credito es la entrega inicial). No mueve caja todavia.
 model SalesPayment {
-  id        Int        @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   companyId Int
   invoiceId Int
   medio     MedioPago
-  monto     Decimal    @db.Decimal(18, 4)
-  createdAt DateTime   @default(now())
+  monto     Decimal   @db.Decimal(18, 4)
+  createdAt DateTime  @default(now())
 
-  invoice   SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([companyId, invoiceId])
   @@map("sales_payments")
@@ -856,43 +910,43 @@ enum MedioPago {
 // Presupuesto / cotizacion de venta. NO afecta stock ni cuenta corriente; se
 // puede convertir en venta. Puede mezclar rubros (no es comprobante fiscal).
 model SalesQuote {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  customerId    Int
-  priceListId   Int?
-  numero        String   // correlativo por empresa, ej 0000001
-  fecha         DateTime
-  validezDias   Int      @default(15)
-  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
-  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
-  iva5          Decimal  @default(0) @db.Decimal(18, 4)
-  iva10         Decimal  @default(0) @db.Decimal(18, 4)
-  total         Decimal  @default(0) @db.Decimal(18, 4)
-  estado        QuoteEstado @default(VIGENTE)
-  observacion   String?
-  usuarioId     Int?
-  createdAt     DateTime @default(now())
+  id             Int         @id @default(autoincrement())
+  companyId      Int
+  customerId     Int
+  priceListId    Int?
+  numero         String // correlativo por empresa, ej 0000001
+  fecha          DateTime
+  validezDias    Int         @default(15)
+  subtotalExenta Decimal     @default(0) @db.Decimal(18, 4)
+  subtotal5      Decimal     @default(0) @db.Decimal(18, 4)
+  subtotal10     Decimal     @default(0) @db.Decimal(18, 4)
+  iva5           Decimal     @default(0) @db.Decimal(18, 4)
+  iva10          Decimal     @default(0) @db.Decimal(18, 4)
+  total          Decimal     @default(0) @db.Decimal(18, 4)
+  estado         QuoteEstado @default(VIGENTE)
+  observacion    String?
+  usuarioId      Int?
+  createdAt      DateTime    @default(now())
 
-  customer      Customer @relation(fields: [customerId], references: [id])
-  priceList     PriceList? @relation(fields: [priceListId], references: [id])
-  items         SalesQuoteItem[]
+  customer  Customer         @relation(fields: [customerId], references: [id])
+  priceList PriceList?       @relation(fields: [priceListId], references: [id])
+  items     SalesQuoteItem[]
 
   @@index([companyId, customerId])
   @@map("sales_quotes")
 }
 
 model SalesQuoteItem {
-  id           Int      @id @default(autoincrement())
-  quoteId      Int
-  articleId    Int
-  cantidad     Decimal  @db.Decimal(18, 4)
+  id             Int     @id @default(autoincrement())
+  quoteId        Int
+  articleId      Int
+  cantidad       Decimal @db.Decimal(18, 4)
   precioUnitario Decimal @db.Decimal(18, 4)
-  ivaTipo      IvaTipo  @default(IVA10)
-  total        Decimal  @db.Decimal(18, 4)
+  ivaTipo        IvaTipo @default(IVA10)
+  total          Decimal @db.Decimal(18, 4)
 
-  quote        SalesQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  article      Article  @relation(fields: [articleId], references: [id])
+  quote   SalesQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  article Article    @relation(fields: [articleId], references: [id])
 
   @@map("sales_quote_items")
 }
@@ -906,73 +960,73 @@ enum QuoteEstado {
 // Nota de credito de venta. Puede devolver articulos (reingresa stock, con
 // detalle de items) o ser solo por monto (descuento/error, sin stock).
 model SalesCreditNote {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  invoiceId     Int?
-  warehouseId   Int?     // deposito donde reingresa el stock devuelto
-  numero        String
-  cdc           String?  @unique
-  estadoSifen   SifenEstado @default(PENDIENTE)
-  fecha         DateTime
-  motivo        String?
-  conStock      Boolean  @default(false) // true si devolvio articulos (reingreso stock)
-  subtotalExenta Decimal @default(0) @db.Decimal(18, 4)
-  subtotal5     Decimal  @default(0) @db.Decimal(18, 4)
-  subtotal10    Decimal  @default(0) @db.Decimal(18, 4)
-  iva5          Decimal  @default(0) @db.Decimal(18, 4)
-  iva10         Decimal  @default(0) @db.Decimal(18, 4)
-  total         Decimal  @db.Decimal(18, 4)
-  usuarioId     Int?
-  createdAt     DateTime @default(now())
+  id             Int         @id @default(autoincrement())
+  companyId      Int
+  invoiceId      Int?
+  warehouseId    Int? // deposito donde reingresa el stock devuelto
+  numero         String
+  cdc            String?     @unique
+  estadoSifen    SifenEstado @default(PENDIENTE)
+  fecha          DateTime
+  motivo         String?
+  conStock       Boolean     @default(false) // true si devolvio articulos (reingreso stock)
+  subtotalExenta Decimal     @default(0) @db.Decimal(18, 4)
+  subtotal5      Decimal     @default(0) @db.Decimal(18, 4)
+  subtotal10     Decimal     @default(0) @db.Decimal(18, 4)
+  iva5           Decimal     @default(0) @db.Decimal(18, 4)
+  iva10          Decimal     @default(0) @db.Decimal(18, 4)
+  total          Decimal     @db.Decimal(18, 4)
+  usuarioId      Int?
+  createdAt      DateTime    @default(now())
 
-  invoice       SalesInvoice? @relation(fields: [invoiceId], references: [id])
-  items         SalesCreditNoteItem[]
+  invoice SalesInvoice?         @relation(fields: [invoiceId], references: [id])
+  items   SalesCreditNoteItem[]
 
   @@index([companyId, invoiceId])
   @@map("sales_credit_notes")
 }
 
 model SalesCreditNoteItem {
-  id           Int      @id @default(autoincrement())
-  creditNoteId Int
-  articleId    Int
-  cantidad     Decimal  @db.Decimal(18, 4)
+  id             Int     @id @default(autoincrement())
+  creditNoteId   Int
+  articleId      Int
+  cantidad       Decimal @db.Decimal(18, 4)
   precioUnitario Decimal @db.Decimal(18, 4)
-  ivaTipo      IvaTipo  @default(IVA10)
-  total        Decimal  @db.Decimal(18, 4)
+  ivaTipo        IvaTipo @default(IVA10)
+  total          Decimal @db.Decimal(18, 4)
 
-  creditNote   SalesCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
-  article      Article  @relation(fields: [articleId], references: [id])
+  creditNote SalesCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  article    Article         @relation(fields: [articleId], references: [id])
 
   @@map("sales_credit_note_items")
 }
 
 model SalesReturn {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  invoiceId     Int?
-  fecha         DateTime
-  motivo        String?
-  total         Decimal  @db.Decimal(18, 4)
-  createdAt     DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  invoiceId Int?
+  fecha     DateTime
+  motivo    String?
+  total     Decimal  @db.Decimal(18, 4)
+  createdAt DateTime @default(now())
 
-  invoice       SalesInvoice? @relation(fields: [invoiceId], references: [id])
+  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id])
 
   @@map("sales_returns")
 }
 
 // Pagare generado para ventas a credito
 model PromissoryNote {
-  id          Int      @id @default(autoincrement())
-  companyId   Int
-  invoiceId   Int
-  numero      String
-  montoTotal  Decimal  @db.Decimal(18, 4)
+  id           Int          @id @default(autoincrement())
+  companyId    Int
+  invoiceId    Int
+  numero       String
+  montoTotal   Decimal      @db.Decimal(18, 4)
   fechaEmision DateTime
-  estado      PagareEstado @default(VIGENTE)
-  createdAt   DateTime @default(now())
+  estado       PagareEstado @default(VIGENTE)
+  createdAt    DateTime     @default(now())
 
-  invoice     SalesInvoice @relation(fields: [invoiceId], references: [id])
+  invoice SalesInvoice @relation(fields: [invoiceId], references: [id])
 
   @@map("promissory_notes")
 }
@@ -985,17 +1039,17 @@ enum PagareEstado {
 
 // Cuotas de una venta a credito
 model Installment {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  invoiceId     Int
-  nroCuota      Int
+  id               Int         @id @default(autoincrement())
+  companyId        Int
+  invoiceId        Int
+  nroCuota         Int
   fechaVencimiento DateTime
-  montoCuota    Decimal  @db.Decimal(18, 4)
-  montoPagado   Decimal  @default(0) @db.Decimal(18, 4)
-  estado        CuotaEstado @default(PENDIENTE)
+  montoCuota       Decimal     @db.Decimal(18, 4)
+  montoPagado      Decimal     @default(0) @db.Decimal(18, 4)
+  estado           CuotaEstado @default(PENDIENTE)
 
-  invoice       SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  payments      InstallmentPayment[]
+  invoice  SalesInvoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payments InstallmentPayment[]
 
   @@index([companyId, estado])
   @@map("installments")
@@ -1042,19 +1096,19 @@ model CashRegister {
 }
 
 model CashMovement {
-  id             Int      @id @default(autoincrement())
+  id             Int         @id @default(autoincrement())
   companyId      Int
   cashRegisterId Int
   tipo           CashMovTipo
-  monto          Decimal  @db.Decimal(18, 4)
-  moneda         String   @default("PYG")
+  monto          Decimal     @db.Decimal(18, 4)
+  moneda         String      @default("PYG")
   concepto       String?
-  origenTipo     String?  // COBRO, PAGO, AJUSTE
+  origenTipo     String? // COBRO, PAGO, AJUSTE
   origenId       Int?
-  fecha          DateTime @default(now())
+  fecha          DateTime    @default(now())
   usuarioId      Int?
 
-  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id])
 
   @@index([companyId, cashRegisterId])
   @@map("cash_movements")
@@ -1066,10 +1120,10 @@ enum CashMovTipo {
 }
 
 model PaymentMethod {
-  id      Int     @id @default(autoincrement())
-  codigo  String  @unique // EFECTIVO, CHEQUE, TRANSFERENCIA, TARJETA
-  nombre  String
-  activo  Boolean @default(true)
+  id     Int     @id @default(autoincrement())
+  codigo String  @unique // EFECTIVO, CHEQUE, TRANSFERENCIA, TARJETA
+  nombre String
+  activo Boolean @default(true)
 
   @@map("payment_methods")
 }
@@ -1094,13 +1148,13 @@ model PaymentReceived {
 
 // Aplicacion de un cobro a una cuota
 model InstallmentPayment {
-  id            Int      @id @default(autoincrement())
+  id            Int     @id @default(autoincrement())
   installmentId Int
   paymentId     Int
-  monto         Decimal  @db.Decimal(18, 4)
+  monto         Decimal @db.Decimal(18, 4)
 
-  installment   Installment     @relation(fields: [installmentId], references: [id])
-  payment       PaymentReceived @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  installment Installment     @relation(fields: [installmentId], references: [id])
+  payment     PaymentReceived @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@map("installment_payments")
 }
@@ -1116,7 +1170,7 @@ model PaymentMade {
   observacion String?
   usuarioId   Int?
 
-  checks      Check[]
+  checks Check[]
 
   @@index([companyId, supplierId])
   @@map("payments_made")
@@ -1124,21 +1178,23 @@ model PaymentMade {
 
 // Cheques (recibidos de clientes o emitidos a proveedores)
 model Check {
-  id             Int      @id @default(autoincrement())
-  companyId      Int
-  tipo           CheckTipo // RECIBIDO | EMITIDO
-  banco          String?
-  numero         String
-  monto          Decimal  @db.Decimal(18, 4)
-  fechaEmision   DateTime
-  fechaCobro     DateTime // fecha diferida / al cobro
-  estado         CheckEstado @default(PENDIENTE)
+  id                Int         @id @default(autoincrement())
+  companyId         Int
+  tipo              CheckTipo // RECIBIDO | EMITIDO
+  banco             String?
+  numero            String
+  monto             Decimal     @db.Decimal(18, 4)
+  fechaEmision      DateTime
+  fechaCobro        DateTime // fecha diferida / al cobro
+  estado            CheckEstado @default(PENDIENTE)
   paymentReceivedId Int?
-  paymentMadeId  Int?
-  createdAt      DateTime @default(now())
+  paymentMadeId     Int?
+  purchaseInvoiceId Int? // cheque entregado al pagar una compra contado
+  createdAt         DateTime    @default(now())
 
   paymentReceived PaymentReceived? @relation(fields: [paymentReceivedId], references: [id])
   paymentMade     PaymentMade?     @relation(fields: [paymentMadeId], references: [id])
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
 
   @@index([companyId, estado])
   @@map("checks")
@@ -1159,17 +1215,17 @@ enum CheckEstado {
 
 // Cuenta corriente cliente (debe/haber)
 model CustomerAccountEntry {
-  id          Int      @id @default(autoincrement())
-  companyId   Int
-  customerId  Int
-  fecha       DateTime @default(now())
-  concepto    String
-  debe        Decimal  @default(0) @db.Decimal(18, 4)
-  haber       Decimal  @default(0) @db.Decimal(18, 4)
-  origenTipo  String?
-  origenId    Int?
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  customerId Int
+  fecha      DateTime @default(now())
+  concepto   String
+  debe       Decimal  @default(0) @db.Decimal(18, 4)
+  haber      Decimal  @default(0) @db.Decimal(18, 4)
+  origenTipo String?
+  origenId   Int?
 
-  customer    Customer @relation(fields: [customerId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
 
   @@index([companyId, customerId])
   @@map("customer_account_entries")
@@ -1177,17 +1233,17 @@ model CustomerAccountEntry {
 
 // Cuenta corriente proveedor (debe/haber)
 model SupplierAccountEntry {
-  id          Int      @id @default(autoincrement())
-  companyId   Int
-  supplierId  Int
-  fecha       DateTime @default(now())
-  concepto    String
-  debe        Decimal  @default(0) @db.Decimal(18, 4)
-  haber       Decimal  @default(0) @db.Decimal(18, 4)
-  origenTipo  String?
-  origenId    Int?
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  supplierId Int
+  fecha      DateTime @default(now())
+  concepto   String
+  debe       Decimal  @default(0) @db.Decimal(18, 4)
+  haber      Decimal  @default(0) @db.Decimal(18, 4)
+  origenTipo String?
+  origenId   Int?
 
-  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
 
   @@index([companyId, supplierId])
   @@map("supplier_account_entries")
@@ -1198,22 +1254,23 @@ model SupplierAccountEntry {
 // =====================================================================
 
 model ChartOfAccount {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   companyId Int
-  codigo    String   // ej 1.1.01.001
+  codigo    String // ej 1.1.01.001
   nombre    String
   tipo      CuentaTipo
-  imputable Boolean  @default(true) // si admite movimientos
+  imputable Boolean    @default(true) // si admite movimientos
   parentId  Int?
-  activo    Boolean  @default(true)
+  activo    Boolean    @default(true)
 
-  parent    ChartOfAccount?  @relation("AccountTree", fields: [parentId], references: [id])
-  children  ChartOfAccount[] @relation("AccountTree")
-  lines     AccountingEntryLine[]
-  config    AccountingConfig[]
+  parent             ChartOfAccount?         @relation("AccountTree", fields: [parentId], references: [id])
+  children           ChartOfAccount[]        @relation("AccountTree")
+  lines              AccountingEntryLine[]
+  config             AccountingConfig[]
   categoryCompra     CategoryAccountConfig[] @relation("CatCuentaCompra")
   categoryVenta      CategoryAccountConfig[] @relation("CatCuentaVenta")
   categoryDevolucion CategoryAccountConfig[] @relation("CatCuentaDevolucion")
+  supplierConfigs    SupplierAccountConfig[]
 
   @@unique([companyId, codigo])
   @@map("chart_of_accounts")
@@ -1228,7 +1285,7 @@ model AccountingConfig {
   clave     String // CAJA, CLIENTES, PROVEEDORES, IVA_DEBITO_10/5, IVA_CREDITO_10/5, VENTAS_10/5/EXENTA, COMPRAS_GRAV/EXENTA
   accountId Int
 
-  account   ChartOfAccount @relation(fields: [accountId], references: [id])
+  account ChartOfAccount @relation(fields: [accountId], references: [id])
 
   @@unique([companyId, clave])
   @@index([companyId])
@@ -1247,30 +1304,30 @@ enum CuentaTipo {
 model FiscalPeriod {
   id          Int      @id @default(autoincrement())
   companyId   Int
-  nombre      String   // ej "2026"
+  nombre      String // ej "2026"
   fechaInicio DateTime
   fechaFin    DateTime
   cerrado     Boolean  @default(false)
 
-  entries     AccountingEntry[]
+  entries AccountingEntry[]
 
   @@map("fiscal_periods")
 }
 
 model AccountingEntry {
-  id          Int      @id @default(autoincrement())
-  companyId   Int
-  periodId    Int?
-  numero      Int?
-  fecha       DateTime
-  glosa       String
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  periodId   Int?
+  numero     Int?
+  fecha      DateTime
+  glosa      String
   // documento que origino el asiento
-  origenTipo  String?  // VENTA, COMPRA, COBRO, PAGO, etc
-  origenId    Int?
-  createdAt   DateTime @default(now())
+  origenTipo String? // VENTA, COMPRA, COBRO, PAGO, etc
+  origenId   Int?
+  createdAt  DateTime @default(now())
 
-  period      FiscalPeriod? @relation(fields: [periodId], references: [id])
-  lines       AccountingEntryLine[]
+  period FiscalPeriod?         @relation(fields: [periodId], references: [id])
+  lines  AccountingEntryLine[]
 
   @@unique([companyId, numero])
   @@index([companyId, fecha])
@@ -1279,15 +1336,15 @@ model AccountingEntry {
 }
 
 model AccountingEntryLine {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   entryId   Int
   accountId Int
-  debe      Decimal  @default(0) @db.Decimal(18, 4)
-  haber     Decimal  @default(0) @db.Decimal(18, 4)
+  debe      Decimal @default(0) @db.Decimal(18, 4)
+  haber     Decimal @default(0) @db.Decimal(18, 4)
   detalle   String?
 
-  entry     AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  account   ChartOfAccount  @relation(fields: [accountId], references: [id])
+  entry   AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account ChartOfAccount  @relation(fields: [accountId], references: [id])
 
   @@map("accounting_entry_lines")
 }
@@ -1296,16 +1353,16 @@ model AccountingEntryLine {
 // que un proceso traduce a un AccountingEntry. Permite que contabilidad
 // "trabaje en background" sin acoplar los modulos operativos.
 model AccountingEvent {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   companyId   Int
-  tipo        String   // VENTA_CONTADO, VENTA_CREDITO, COMPRA, COBRO, PAGO...
+  tipo        String // VENTA_CONTADO, VENTA_CREDITO, COMPRA, COBRO, PAGO...
   origenTipo  String
   origenId    Int
   payload     Json
-  procesado   Boolean  @default(false)
+  procesado   Boolean   @default(false)
   entryId     Int?
   error       String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   processedAt DateTime?
 
   @@index([companyId, procesado])

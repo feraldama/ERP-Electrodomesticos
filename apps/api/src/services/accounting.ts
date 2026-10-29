@@ -77,6 +77,8 @@ export type CategoryMoment = "compra" | "venta" | "devolucion";
 //    categoria no tiene cuenta para ninguno de esos momentos, cae a `fallbackClave`.
 interface LineDraft {
   clave?: string;
+  // Cuenta puntual (ej. la del proveedor); si viene, manda sobre la clave.
+  accountId?: number | null;
   categoryId?: number | null;
   categoryMoments?: CategoryMoment[];
   fallbackClave?: string;
@@ -193,6 +195,13 @@ function pagosLines(p: Record<string, unknown>, side: "debe" | "haber", amount: 
     .filter((l) => l.debe > 0 || l.haber > 0);
 }
 
+// Deuda con el proveedor: a su cuenta propia si el evento la trae (cuentaProveedorId,
+// tomada de SupplierAccountConfig al registrar la operacion); si no, a PROVEEDORES.
+function prov(p: Record<string, unknown>, debe: number, haber: number): LineDraft {
+  const accountId = typeof p.cuentaProveedorId === "number" ? p.cuentaProveedorId : null;
+  return { clave: "PROVEEDORES", accountId, debe, haber };
+}
+
 /**
  * Traduce un evento contable a las lineas del asiento (debe/haber por cuenta).
  * Modelo paraguayo (IVA incluido ya desglosado en el evento). Las lineas en cero se
@@ -218,10 +227,11 @@ function buildLines(tipo: string, p: Record<string, unknown>): LineDraft[] {
       ];
     }
     case "COMPRA": {
+      // Contado: sale por la cuenta de cada medio de pago (o CAJA); credito: a Proveedores.
       const contado = (p.condicion as string) === "CONTADO";
       return [
         ...comprasLines(p, "debe", ["compra"]),
-        { clave: contado ? "CAJA" : "PROVEEDORES", debe: 0, haber: total },
+        ...(contado ? pagosLines(p, "haber", total) : [prov(p, 0, total)]),
       ];
     }
     case "COBRO": {
@@ -236,7 +246,7 @@ function buildLines(tipo: string, p: Record<string, unknown>): LineDraft[] {
       // Pago a proveedor: sale por la cuenta del medio de pago (o CAJA).
       const monto = num("montoTotal");
       return [
-        { clave: "PROVEEDORES", debe: monto, haber: 0 },
+        prov(p, monto, 0),
         { clave: claveDeMedio(p.metodo as string | undefined), debe: 0, haber: monto },
       ];
     }
@@ -246,13 +256,13 @@ function buildLines(tipo: string, p: Record<string, unknown>): LineDraft[] {
       const monto = num("montoTotal");
       return [
         { clave: "MEDIO_CHEQUE", debe: monto, haber: 0 },
-        { clave: "PROVEEDORES", debe: 0, haber: monto },
+        prov(p, 0, monto),
       ];
     }
     case "NOTA_CREDITO_VENTA": // devolucion de venta: usa la cuenta de devolucion (o venta)
       return [...ventasLines(p, "debe", ["devolucion", "venta"]), { clave: "CLIENTES", debe: 0, haber: total }];
     case "NOTA_CREDITO_COMPRA": // devolucion de compra: usa la cuenta de devolucion (o compra)
-      return [{ clave: "PROVEEDORES", debe: total, haber: 0 }, ...comprasLines(p, "haber", ["devolucion", "compra"])];
+      return [prov(p, total, 0), ...comprasLines(p, "haber", ["devolucion", "compra"])];
     case "VENTA_ANULADA": {
       // Reversa exacta del asiento de la venta (contra la misma cuenta de venta y los
       // mismos medios de pago que registro la venta, provistos en el payload).
@@ -271,7 +281,7 @@ function buildLines(tipo: string, p: Record<string, unknown>): LineDraft[] {
     case "COMPRA_ANULADA": {
       const contado = (p.condicion as string) === "CONTADO";
       return [
-        { clave: contado ? "CAJA" : "PROVEEDORES", debe: total, haber: 0 },
+        ...(contado ? pagosLines(p, "debe", total) : [prov(p, total, 0)]),
         ...comprasLines(p, "haber", ["compra"]),
       ];
     }
@@ -293,6 +303,7 @@ export function computeEntryLines(
   resolveCategoria: (categoryId: number | null | undefined, moments: CategoryMoment[]) => number | null
 ): Array<{ accountId: number; debe: number; haber: number }> {
   const resolveLine = (l: LineDraft): number => {
+    if (l.accountId) return l.accountId;
     if (l.categoryMoments) return resolveCategoria(l.categoryId, l.categoryMoments) ?? resolveClave(l.fallbackClave!);
     return resolveClave(l.clave!);
   };
@@ -412,6 +423,44 @@ export async function getAccountBalances(
       return { accountId: g.accountId, codigo: c?.codigo ?? "", nombre: c?.nombre ?? "", tipo: c?.tipo ?? "", debe, haber, saldo: debe - haber };
     })
     .sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+/**
+ * Cuenta contable propia del proveedor en la empresa (SupplierAccountConfig), o null
+ * si no tiene (la deuda va a la clave PROVEEDORES). Se guarda en el payload de cada
+ * evento que toca la deuda con el proveedor, asi el asiento no depende de cambios
+ * posteriores de la configuracion.
+ */
+export async function cuentaProveedorId(
+  db: Pick<typeof prisma, "supplierAccountConfig">,
+  companyId: number,
+  supplierId: number
+): Promise<number | null> {
+  const cfg = await db.supplierAccountConfig.findUnique({
+    where: { companyId_supplierId: { companyId, supplierId } },
+    select: { accountId: true },
+  });
+  return cfg?.accountId ?? null;
+}
+
+/**
+ * Cuenta del proveedor con la que se registro una compra (la de su evento COMPRA;
+ * null = PROVEEDORES); sin evento, la configurada hoy. Para que la anulacion y las notas de
+ * credito reviertan contra la misma cuenta donde quedo la deuda.
+ */
+export async function cuentaProveedorDeCompra(
+  db: Pick<typeof prisma, "supplierAccountConfig" | "accountingEvent">,
+  companyId: number,
+  invoice: { id: number; supplierId: number }
+): Promise<number | null> {
+  const ev = await db.accountingEvent.findFirst({
+    where: { companyId, origenTipo: "COMPRA", origenId: invoice.id },
+    select: { payload: true },
+  });
+  if (!ev) return cuentaProveedorId(db, companyId, invoice.supplierId);
+  // Una compra registrada antes de asignar la cuenta quedo en PROVEEDORES (null).
+  const guardada = (ev.payload as Record<string, unknown> | null)?.cuentaProveedorId;
+  return typeof guardada === "number" ? guardada : null;
 }
 
 /**

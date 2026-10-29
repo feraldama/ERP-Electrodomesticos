@@ -14,9 +14,20 @@ import { SupplierPicker } from "@/components/SupplierPicker";
 import { SupplierTimbradoModal } from "@/components/SupplierTimbradoModal";
 import { useToast } from "@/components/ui/Toast";
 import { PurchaseLineModal } from "@/components/PurchaseLineModal";
+import { PurchasePaymentModal, MEDIO_COMPRA_LABEL, type MedioPagoCompra, type PagoCompra } from "@/components/PurchasePaymentModal";
+import { PurchaseCreditModal, type CuotaCompra } from "@/components/PurchaseCreditModal";
 import { calcLinea, type CompraLinea } from "@/lib/compraLinea";
 import { desglosarIvaIncluido } from "@/lib/iva";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { ArrowLeftRight, Banknote, CalendarClock, Check, FileText, Pencil, Plus, Trash2, X } from "lucide-react";
+
+const MEDIOS_CONTADO: Array<{ key: MedioPagoCompra; icon: typeof Banknote }> = [
+  { key: "EFECTIVO", icon: Banknote },
+  { key: "TRANSFERENCIA", icon: ArrowLeftRight },
+  { key: "CHEQUE", icon: FileText },
+];
+// Referencia estable: el modal de credito se reinicia cuando cambia `initial`.
+const SIN_CUOTAS: CuotaCompra[] = [];
 
 function today() {
   return hoyYmd();
@@ -44,6 +55,13 @@ export default function CargarCompraPage() {
   const [lines, setLines] = useState<CompraLinea[]>([]);
   // Asistente de detalle: abierto con una linea a editar (o null = nueva)
   const [lineModal, setLineModal] = useState<{ open: boolean; edit: CompraLinea | null }>({ open: false, edit: null });
+  // Contado: pagos por medio (deben sumar el total). Credito: cronograma de cuotas.
+  const [pagos, setPagos] = useState<PagoCompra[]>([]);
+  const [medioModal, setMedioModal] = useState<MedioPagoCompra | null>(null);
+  const [cuotas, setCuotas] = useState<CuotaCompra[]>([]);
+  const [creditModal, setCreditModal] = useState(false);
+  // Claves contables de medios de pago con cuenta asignada (sin cuenta, el pago sale de Caja).
+  const [mediosConCuenta, setMediosConCuenta] = useState<Set<string> | null>(null);
   const [saving, setSaving] = useState(false);
   const [addWh, setAddWh] = useState(false);
   const [addSup, setAddSup] = useState(false);
@@ -61,6 +79,9 @@ export default function CargarCompraPage() {
         if (bs.length) setBranchId(String(bs[0].id));
       })
       .catch(() => setBranches([]));
+    api<Array<{ clave: string; accountId: number | null }>>("/contabilidad/config")
+      .then((cfg) => setMediosConCuenta(new Set(cfg.filter((c) => c.accountId).map((c) => c.clave))))
+      .catch(() => setMediosConCuenta(null));
   }, [companyId]);
 
   // Al cambiar de proveedor se cargan sus timbrados vigentes; si tiene uno solo se elige.
@@ -114,6 +135,29 @@ export default function CargarCompraPage() {
     return { exenta, grav5, grav10, iva5, iva10, total: exenta + grav5 + grav10 + iva5 + iva10 };
   }, [lines]);
 
+  const totalCompra = Math.round(totals.total);
+  const pagado = pagos.reduce((s, p) => s + p.monto, 0);
+  const faltaPagar = totalCompra - pagado;
+  const totalCuotas = cuotas.reduce((s, c) => s + c.monto, 0);
+  // Si cambia el detalle despues de cargar la condicion, las cuotas ya no cuadran.
+  const cuotasDesactualizadas = cuotas.length > 0 && totalCuotas !== totalCompra;
+  // Si se cambia la fecha de la compra despues, un vencimiento o cobro puede quedar antes.
+  const fechasAnteriores =
+    condicion === "CONTADO"
+      ? pagos.some((p) => p.fechaCobro && p.fechaCobro < fecha)
+      : cuotas.some((c) => c.fechaVencimiento < fecha);
+
+  // Transferencia / cheque usados sin cuenta propia: el asiento los registra como salida de Caja.
+  const mediosSinCuenta = mediosConCuenta
+    ? [...new Set(pagos.map((p) => p.medio))].filter((m) => m !== "EFECTIVO" && !mediosConCuenta.has(`MEDIO_${m}`))
+    : [];
+
+  function cambiarCondicion(c: "CONTADO" | "CREDITO") {
+    setCondicion(c);
+    setPagos([]);
+    setCuotas([]);
+  }
+
   const nroCompleto = numeroFactura
     ? `${pad(establecimiento, 3)}-${pad(puntoEmision, 3)}-${pad(numeroFactura, 7)}`
     : "";
@@ -142,6 +186,20 @@ export default function CargarCompraPage() {
     }
     if (lines.length === 0) return notify("error", "Agrega al menos un articulo");
     if (lines.some((l) => !(calcLinea(l).adquirida > 0))) return notify("error", "Cantidades deben ser mayores a cero");
+    if (condicion === "CONTADO" && faltaPagar !== 0) {
+      return notify("error", faltaPagar > 0
+        ? `Falta asignar ${formatGs(faltaPagar)} Gs en la forma de pago`
+        : `Los pagos superan el total en ${formatGs(-faltaPagar)} Gs`);
+    }
+    if (condicion === "CREDITO" && cuotas.length === 0) return notify("error", "Carga la condicion de pago del credito");
+    if (condicion === "CREDITO" && cuotasDesactualizadas) {
+      return notify("error", "El total cambio: revisa la condicion de pago");
+    }
+    if (fechasAnteriores) {
+      return notify("error", condicion === "CONTADO"
+        ? "Hay un cheque con fecha de cobro anterior a la fecha de la compra"
+        : "Hay cuotas que vencen antes de la fecha de la compra");
+    }
 
     setSaving(true);
     try {
@@ -169,6 +227,7 @@ export default function CargarCompraPage() {
               ...(l.article.controlaSerie ? { series: l.series } : {}),
             };
           }),
+          ...(condicion === "CONTADO" ? { pagos } : { cuotas }),
         }),
       });
       notify("success", "Compra registrada: stock y costos actualizados");
@@ -176,6 +235,8 @@ export default function CargarCompraPage() {
       // Se conservan establecimiento/punto/timbrado: suele cargarse varias facturas del mismo proveedor
       setNumeroFactura("");
       setLines([]);
+      setPagos([]);
+      setCuotas([]);
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Error al registrar la compra");
     } finally {
@@ -197,7 +258,7 @@ export default function CargarCompraPage() {
       <Section title="Tipo, Numeración y Fecha">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Tipo de movimiento" htmlFor="cond" required>
-            <Select id="cond" value={condicion} onChange={(e) => setCondicion(e.target.value as "CONTADO" | "CREDITO")}>
+            <Select id="cond" value={condicion} onChange={(e) => cambiarCondicion(e.target.value as "CONTADO" | "CREDITO")}>
               <option value="CONTADO">Compra contado</option>
               <option value="CREDITO">Compra credito</option>
             </Select>
@@ -367,12 +428,127 @@ export default function CargarCompraPage() {
           </div>
         </div>
 
+        {/* Metodo de pago: contado por medio / credito con condicion de pago */}
+        {lines.length > 0 && (
+          <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-secondary">
+              {condicion === "CONTADO" ? "Metodo de pago" : "Condicion de pago"}
+            </h3>
+
+            {condicion === "CONTADO" ? (
+              <>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {MEDIOS_CONTADO.map(({ key, icon: Icon }) => {
+                    const usado = pagos.some((p) => p.medio === key);
+                    return (
+                      <button key={key} type="button" onClick={() => setMedioModal(key)}
+                        className={cn(
+                          "flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                          usado ? "border-accent bg-accent/10 text-accent" : "border-border bg-white text-secondary hover:border-primary hover:text-primary"
+                        )}>
+                        <Icon className="h-4 w-4" /> {MEDIO_COMPRA_LABEL[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {pagos.length > 0 && (
+                  <ul className="mt-3 divide-y divide-border rounded-lg border border-border bg-white">
+                    {pagos.map((p, i) => (
+                      <li key={i} className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <span className="w-28 font-medium text-foreground">{MEDIO_COMPRA_LABEL[p.medio]}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                          {[p.banco, p.referencia && (p.medio === "CHEQUE" ? `N° ${p.referencia}` : `Op. ${p.referencia}`),
+                            p.fechaCobro && `cobro ${ymdAFecha(p.fechaCobro)}`].filter(Boolean).join(" · ")}
+                        </span>
+                        <span className="font-mono font-medium text-foreground">{formatGs(p.monto)}</span>
+                        <button type="button" onClick={() => setPagos((ps) => ps.filter((_, j) => j !== i))} aria-label="Quitar pago"
+                          className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-destructive">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {fechasAnteriores && (
+                  <p className="mt-2 text-sm text-destructive">
+                    Hay un cheque con fecha de cobro anterior a la fecha de la compra: quitalo y vuelve a cargarlo.
+                  </p>
+                )}
+                {mediosSinCuenta.length > 0 && (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {mediosSinCuenta.map((m) => MEDIO_COMPRA_LABEL[m]).join(" y ")}{" "}
+                    {mediosSinCuenta.length > 1 ? "no tienen" : "no tiene"} cuenta contable propia: en el asiento se
+                    registrara como salida de Caja. Se asigna en Contabilidad › Configuracion de cuentas.
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                  <span className="text-secondary">
+                    Asignado: <span className="font-mono font-semibold text-foreground">{formatGs(pagado)} Gs</span>
+                  </span>
+                  {faltaPagar === 0 ? (
+                    <span className="flex items-center gap-1 text-accent"><Check className="h-4 w-4" /> Pago completo</span>
+                  ) : (
+                    <span className={faltaPagar > 0 ? "text-destructive" : "text-amber-600"}>
+                      {faltaPagar > 0 ? `Falta ${formatGs(faltaPagar)} Gs` : `Sobra ${formatGs(-faltaPagar)} Gs`}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setCreditModal(true)}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto",
+                    cuotas.length && !cuotasDesactualizadas
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border bg-white text-secondary hover:border-primary hover:text-primary"
+                  )}>
+                  <CalendarClock className="h-4 w-4" />
+                  {cuotas.length ? "Editar condicion de pago" : "Cargar condicion de pago"}
+                </button>
+                {cuotas.length > 0 && (
+                  <p className="mt-3 text-sm text-secondary">
+                    {cuotas.length} cuota{cuotas.length > 1 ? "s" : ""} de {formatGs(cuotas[0].monto)} Gs
+                    {" · "}vence{cuotas.length > 1 ? "n" : ""} {ymdAFecha(cuotas[0].fechaVencimiento)}
+                    {cuotas.length > 1 && ` al ${ymdAFecha(cuotas[cuotas.length - 1].fechaVencimiento)}`}
+                  </p>
+                )}
+                {cuotasDesactualizadas && (
+                  <p className="mt-1 text-sm text-destructive">El total de la compra cambio: vuelve a aplicar la condicion de pago.</p>
+                )}
+                {fechasAnteriores && (
+                  <p className="mt-1 text-sm text-destructive">Hay cuotas que vencen antes de la fecha de la compra: edita la condicion de pago.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <div className="mt-5 flex justify-end">
           <Button onClick={confirm} loading={saving} disabled={lines.length === 0}>
             Confirmar compra
           </Button>
         </div>
       </Section>
+
+      <PurchasePaymentModal
+        medio={medioModal}
+        onClose={() => setMedioModal(null)}
+        pendiente={Math.max(faltaPagar, 0)}
+        fecha={fecha}
+        onSave={(p) => setPagos((ps) => [...ps, p])}
+      />
+
+      <PurchaseCreditModal
+        open={creditModal}
+        onClose={() => setCreditModal(false)}
+        total={totalCompra}
+        fecha={fecha}
+        initial={cuotasDesactualizadas ? SIN_CUOTAS : cuotas}
+        onSave={setCuotas}
+      />
 
       <PurchaseLineModal
         open={lineModal.open}

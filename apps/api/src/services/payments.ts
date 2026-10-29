@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { assertPeriodoAbierto } from "./accounting.js";
+import { assertPeriodoAbierto, cuentaProveedorId } from "./accounting.js";
 
 export interface CreateSupplierPaymentInput {
   companyId: number;
@@ -31,6 +31,35 @@ export interface CreateCollectionInput {
 const r = (n: number) => Math.round(n);
 
 /**
+ * Valida un cheque a emitir: la fecha de cobro no puede ser anterior a la de emision
+ * y no puede existir otro cheque emitido vigente (no anulado) con el mismo numero y
+ * banco. Lo usan los pagos a proveedores y las compras contado pagadas con cheque.
+ */
+export async function assertChequeEmitible(
+  prisma: Pick<Prisma.TransactionClient, "check">,
+  companyId: number,
+  cheque: { numero: string; banco?: string | null; fechaCobro: Date },
+  fechaEmision: Date
+) {
+  const numero = cheque.numero.trim();
+  if (cheque.fechaCobro < fechaEmision) {
+    throw new Error(`La fecha de cobro del cheque ${numero} no puede ser anterior a la de emision`);
+  }
+  const banco = cheque.banco?.trim() || null;
+  const dup = await prisma.check.findFirst({
+    where: {
+      companyId,
+      tipo: "EMITIDO",
+      numero,
+      estado: { not: "ANULADO" },
+      banco: banco ? { equals: banco, mode: "insensitive" } : null,
+    },
+    select: { id: true },
+  });
+  if (dup) throw new Error(`Ya existe un cheque emitido N° ${numero}${banco ? ` del banco ${banco}` : ""}`);
+}
+
+/**
  * Registra un pago a un proveedor (a cuenta del saldo, ya que las compras no
  * generan cuotas), en una sola transaccion:
  *  1) crea el PaymentMade
@@ -43,6 +72,9 @@ export async function createSupplierPayment(prisma: Prisma.TransactionClient, in
 
   const monto = r(input.monto);
   if (monto <= 0) throw new Error("El monto a pagar debe ser mayor a cero");
+  if (input.metodo === "CHEQUE" && input.cheque) {
+    await assertChequeEmitible(prisma, input.companyId, input.cheque, input.fecha);
+  }
 
   const payment = await prisma.paymentMade.create({
     data: {
@@ -91,7 +123,14 @@ export async function createSupplierPayment(prisma: Prisma.TransactionClient, in
       tipo: "PAGO",
       origenTipo: "PAGO",
       origenId: payment.id,
-      payload: { montoTotal: monto, fecha: input.fecha, metodo: input.metodo, supplierId: input.supplierId },
+      payload: {
+        montoTotal: monto,
+        fecha: input.fecha,
+        metodo: input.metodo,
+        supplierId: input.supplierId,
+        // Cancela la deuda en la cuenta propia del proveedor (si tiene) o en PROVEEDORES.
+        cuentaProveedorId: await cuentaProveedorId(prisma, input.companyId, input.supplierId),
+      },
     },
   });
 

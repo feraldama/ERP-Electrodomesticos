@@ -71,6 +71,7 @@ const MODULES: Array<{
       { codigo: "VENM009", nombre: "Puntos de expedicion por rubro", categoria: "MANTENIMIENTOS", ruta: "/ventas/puntos-expedicion" },
       { codigo: "VENM010", nombre: "Listas de precios", categoria: "MANTENIMIENTOS", ruta: "/ventas/listas-precios" },
       { codigo: "VENM011", nombre: "Precios por articulo", categoria: "MANTENIMIENTOS", ruta: "/ventas/precios" },
+      { codigo: "VENC012", nombre: "Historial de ventas por articulo", categoria: "CONSULTAS", ruta: "/ventas/historial" },
     ],
   },
   {
